@@ -626,10 +626,10 @@ const dayLen = () => (owned.lantern ? 215 : 170) + (built.roof ? 20 : 0);
 const endMin = () => owned.lantern ? 1320 : 1200;
 const MACH = {
   chime:     { name: 'Wind chime',    short: 'Chime',     price: 50,  rep: 0, info: 'Crows keep away from it' },
-  sprinkler: { name: 'Sprinkler',     short: 'Sprinkler', price: 110, rep: 1, info: 'Waters the 8 tiles around it every morning' },
-  drill:     { name: 'Seed drill',    short: 'Drill',     price: 200, rep: 2, info: 'Sows its loaded seed on bare soil in a 3x3 each morning' },
-  picker:    { name: 'Harvester',     short: 'Picker',    price: 300, rep: 3, info: 'Picks ripe crops in a 5x5 into your basket each morning' },
-  tower:     { name: 'Water tower',   price: 450, rep: 4, short: 'Tower', info: 'Waters a whole 7x7 patch every morning' },
+  sprinkler: { name: 'Sprinkler',     short: 'Sprinkler', price: 110, rep: 1, info: 'Waters its whole row, left to right, each morning' },
+  drill:     { name: 'Seed drill',    short: 'Drill',     price: 200, rep: 2, info: 'Sows its loaded seed across the row each morning' },
+  picker:    { name: 'Harvester',     short: 'Picker',    price: 300, rep: 3, info: 'Harvests every ripe crop across the row each morning' },
+  tower:     { name: 'Water tower',   price: 450, rep: 4, short: 'Tower', info: 'Waters its row plus the row above and below' },
   cart:      { name: 'Delivery cart', price: 600, rep: 5, short: 'Cart',  info: 'Each morning it fills your orders, then sells the rest' }
 };
 const UPG = {
@@ -788,29 +788,33 @@ const maxOrders = () => built.barn ? 3 : 2;
 function eachMach(kind, fn) {
   for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) if (farm[y][x].obj === kind) fn(farm[y][x], x, y);
 }
-function area(x, y, r, fn) {
-  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-    const c = farm[y + dy] && farm[y + dy][x + dx];
-    if (c) fn(c, x + dx, y + dy);
+// Row machines: place one at the left of a row and it works the whole line
+// out to the right edge of the field, instead of needing one every few tiles.
+function rowArea(x, y, rows, fn) {
+  const half = (rows - 1) / 2;
+  for (let dy = -half; dy <= half; dy++) {
+    const ry = y + dy;
+    if (ry < 0 || ry >= WR) continue;
+    for (let rx = x; rx <= WC - 2; rx++) { const c = farm[ry][rx]; if (c) fn(c, rx, ry); }
   }
 }
 function runMachines() {
   const L = [];
   let picked = 0, sown = 0, watered = 0, dry = false;
-  eachMach('picker', (m, x, y) => area(x, y, 2, c => {
+  eachMach('picker', (m, x, y) => rowArea(x, y, 1, c => {
     if (c.crop && c.crop.stage >= CROPDEF[c.crop.type].days) {
       const d = CROPDEF[c.crop.type];
       inv.basket[c.crop.type]++; picked++;
       if (d.regrow) c.crop.stage = d.days - d.regrow; else c.crop = null;
     }
   }));
-  eachMach('drill', (m, x, y) => area(x, y, 1, c => {
+  eachMach('drill', (m, x, y) => rowArea(x, y, 1, c => {
     if (c.soil && !c.crop && !c.obj && m.seed && inv[m.seed] > 0) { c.crop = { type: m.seed, stage: 0 }; inv[m.seed]--; sown++; }
     else if (c.soil && !c.crop && !c.obj && m.seed && !inv[m.seed]) dry = true;
   }));
   const wet = c => { if (c.soil && !c.wet) { c.wet = true; watered++; } };
-  eachMach('sprinkler', (m, x, y) => area(x, y, 1, wet));
-  eachMach('tower', (m, x, y) => area(x, y, 3, wet));
+  eachMach('sprinkler', (m, x, y) => rowArea(x, y, 1, wet));
+  eachMach('tower', (m, x, y) => rowArea(x, y, 3, wet));
   if (picked) L.push('picked ' + picked);
   if (sown) L.push('sowed ' + sown);
   if (watered) L.push('watered ' + watered);
@@ -902,24 +906,33 @@ function setRep(n, why) {
   else say(why + (rep > before ? ' Reputation up!' : ''), 3);
 }
 
-/* ================= save ================= */
+/* ================= save =================
+   Plain localStorage: works in any normal browser (GitHub Pages, opened
+   as a file, etc). This is NOT the Claude-artifact window.storage API,
+   which only exists inside Claude's own chat runtime and would silently
+   no-op once this file is hosted or downloaded on its own. */
 const SAVE_KEY = 'scarecrow-farm-v2';
-async function save() {
+function storageOK() {
+  try { const k = '__t'; localStorage.setItem(k, '1'); localStorage.removeItem(k); return true; }
+  catch (e) { return false; }
+}
+function save() {
   try {
-    if (!window.storage) return;
+    if (!storageOK()) return;
     const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music,
       farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0])) };
-    await window.storage.set(SAVE_KEY, JSON.stringify(data), false);
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     hasSave = true;
   } catch (e) {}
 }
-async function checkSave() {
-  try { if (!window.storage) return; const r = await window.storage.get(SAVE_KEY, false); hasSave = !!(r && r.value); } catch (e) { hasSave = false; }
+function checkSave() {
+  try { hasSave = storageOK() && !!localStorage.getItem(SAVE_KEY); } catch (e) { hasSave = false; }
 }
-async function loadGame() {
+function loadGame() {
   try {
-    const r = await window.storage.get(SAVE_KEY, false);
-    const d = JSON.parse(r.value);
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) { newGame(); return; }
+    const d = JSON.parse(raw);
     blankFarm();
     d.farm.forEach((row, y) => row.forEach((a, x) => {
       const c = farm[y][x]; c.soil = !!a[0]; c.wet = !!a[1]; c.obj = a[2] || null; c.hp = a[3] || 0;
@@ -938,9 +951,34 @@ async function loadGame() {
 }
 
 /* ================= actions ================= */
-const targetTile = () => pxTile(player.x + player.fx * 12, player.y - 5 + player.fy * 12);
+const idealPoint = () => [player.x + player.fx * 12, player.y - 5 + player.fy * 12];
+// Wider forgiveness: try the exact facing tile first, then its 4 neighbors,
+// closest to the facing point first, so a slightly-off approach still hits.
+function candidateTiles() {
+  const [ix, iy] = idealPoint();
+  const tx0 = Math.floor(ix / TS), ty0 = Math.floor(iy / TS);
+  return [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]
+    .map(([dx, dy]) => [tx0 + dx, ty0 + dy])
+    .sort((a, b) => {
+      const da = (a[0] * TS + 8 - ix) ** 2 + (a[1] * TS + 8 - iy) ** 2;
+      const db = (b[0] * TS + 8 - ix) ** 2 + (b[1] * TS + 8 - iy) ** 2;
+      return da - db;
+    });
+}
+function targetTile() {
+  for (const [tx, ty] of candidateTiles()) {
+    if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) continue;
+    if (actionAt(tx, ty)) return [tx, ty];
+  }
+  const [ix, iy] = idealPoint();
+  return [Math.floor(ix / TS), Math.floor(iy / TS)];
+}
 function getAction() {
   const [tx, ty] = targetTile();
+  if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) return null;
+  return actionAt(tx, ty);
+}
+function actionAt(tx, ty) {
   if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) return null;
   const st = STATIC[tx + ',' + ty];
   if (st === 'shack') return { label: 'Sleep', fn: trySleep };
@@ -1383,6 +1421,23 @@ function pixelRing(x, y, r, col) {
     g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * .75), 1, 1);
   }
 }
+const ROW_MACH = { sprinkler: 1, drill: 1, picker: 1, tower: 3 };
+function drawRowLines(cx, cy) {
+  for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) {
+    const o = farm[y][x].obj, rows = ROW_MACH[o];
+    if (!rows) continue;
+    const col = o === 'drill' ? (farm[y][x].seed ? CROPPAL[farm[y][x].seed][2] : SOI[3])
+      : o === 'picker' ? ACC : WAT[2];
+    const half = (rows - 1) / 2;
+    const x0 = (x + 1) * TS, x1 = (WC - 1) * TS;
+    if (x1 < cx || x0 > cx + VW) continue;
+    g.fillStyle = col;
+    for (let dy = -half; dy <= half; dy++) {
+      const py = (y + dy) * TS + 8;
+      for (let px = Math.max(x0, cx - 4); px < Math.min(x1, cx + VW + 4); px += 3) g.fillRect(px, py, 1, 1);
+    }
+  }
+}
 function drawWorld() {
   const cx = Math.round(cam.x), cy = Math.round(cam.y);
   g.fillStyle = P[1]; g.fillRect(0, 0, VW, VH);
@@ -1458,6 +1513,7 @@ function drawWorld() {
   }});
   if (state !== 'title') list.push({ y: player.y, d: drawPlayer });
   list.sort((a, b) => a.y - b.y).forEach(e => e.d());
+  drawRowLines(cx, cy);
   if (state === 'day') drawCursor();
   const flying = crows.filter(c => c.st !== 'eat');
   for (const cr of flying) shadow(cr.x, cr.y - 1, 5);
@@ -1852,6 +1908,10 @@ blankFarm();
 refreshBg();
 buildShop();
 checkSave();
+// Safety net: also save whenever the tab is hidden or closed, so mid-day
+// progress (tilling, planting, coins) isn't lost between day-boundary saves.
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && state !== 'title') save(); });
+addEventListener('pagehide', () => { if (state !== 'title') save(); });
 let last = performance.now();
 function frame(now) {
   const dt = Math.min(.05, (now - last) / 1000); last = now;
