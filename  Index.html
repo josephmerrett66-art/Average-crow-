@@ -1,0 +1,1865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Scarecrow Farm</title>
+<style>
+  :root{ --ink:#241d16; --soot:#6b5a45; --straw:#e0b054; --paper:#f4ecd8; --grass:#a8c473; }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+  html,body{height:100%;background:#2f4a2a;overflow:hidden;touch-action:none;overscroll-behavior:none}
+  canvas{position:fixed;left:0;top:0;image-rendering:pixelated;image-rendering:crisp-edges}
+  #sat{position:fixed;top:0;left:0;width:1px;height:env(safe-area-inset-top);pointer-events:none}
+  #pad{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;
+    padding:0 12px calc(16px + env(safe-area-inset-bottom));pointer-events:none}
+  #stick,#btns{pointer-events:auto}
+  #stick{width:128px;height:128px;flex:none;border-radius:50%;position:relative;touch-action:none;
+    background-color:rgba(36,29,22,.3);background-image:radial-gradient(rgba(36,29,22,.5) 1.2px, transparent 1.4px);
+    background-size:7px 7px;border:3px solid rgba(36,29,22,.6)}
+  #knob{position:absolute;left:50%;top:50%;width:54px;height:54px;border-radius:50%;transform:translate(-50%,-50%);
+    background:rgba(224,176,84,.92);border:3px solid var(--paper);box-shadow:0 4px 0 rgba(36,29,22,.65);pointer-events:none}
+  #btns{position:relative;width:184px;height:156px;flex:none}
+  .b{position:absolute;font-family:"Courier New",Courier,monospace;font-weight:700;touch-action:none;cursor:pointer;line-height:1.1;color:var(--ink)}
+  .b:focus-visible{outline:3px dashed var(--ink);outline-offset:4px}
+  .b.on{transform:translateY(4px);box-shadow:0 1px 0 rgba(36,29,22,.75) !important}
+  #use{right:0;top:22px;width:104px;height:104px;border-radius:50%;background:rgba(244,236,216,.95);border:4px solid var(--ink);font-size:19px;box-shadow:0 6px 0 rgba(36,29,22,.75)}
+  #use.idle{color:#b9a888}
+  #shoo{left:6px;top:0;width:66px;height:66px;border-radius:50%;background:rgba(224,176,84,.95);border:3px solid var(--ink);font-size:14px;box-shadow:0 5px 0 rgba(36,29,22,.75)}
+  #item{left:0;bottom:4px;width:80px;height:48px;border-radius:12px;background:rgba(36,29,22,.9);color:var(--paper);border:3px solid var(--soot);font-size:12px;box-shadow:0 4px 0 rgba(20,14,10,.8)}
+  #item small{display:block;font-size:10px;color:#b9a888;font-weight:400}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="sat"></div>
+<div id="pad">
+  <div id="stick" aria-label="Move"><div id="knob"></div></div>
+  <div id="btns">
+    <button class="b" id="shoo" aria-label="Shoo crows">Shoo</button>
+    <button class="b" id="item" aria-label="Switch item"><small>Holding</small><span>Turnip 8</span></button>
+    <button class="b" id="use" aria-label="Use">Use</button>
+  </div>
+</div>
+
+<script>
+(() => {
+const TS = 16, WC = 28, WR = 36, WW = WC * TS, WH = WR * TS;
+const cv = document.getElementById('c');
+const g = cv.getContext('2d');
+const P   = ['#241d16', '#6b5a45', '#b9a888', '#f4ecd8'];  // UI / default
+const GR  = ['#3c5a2e', '#6e9447', '#a8c473', '#cfe0a0'];  // grass
+const SOI = ['#3a2618', '#6b4326', '#9c6b3f', '#c99a63'];  // soil
+const WAT = ['#1b3a52', '#2e6d8f', '#5aa8c4', '#9fd8e6'];  // water
+const WD  = ['#3a2417', '#7a5030', '#b07f4d', '#e0bd8c'];  // wood
+const HS  = ['#3a2417', '#8a6a4a', '#cbb79a', '#f6efe0'];  // house walls
+const TR  = ['#24401f', '#3f6b30', '#639a45', '#9cc46a'];  // tree
+const CRW = ['#191924', '#3a3a52', '#e8a34a', '#f4ecd8'];  // crow
+const SCP = ['#3a2417', '#7d4a3a', '#e0b054', '#f2e6cc'];  // scarecrow
+const MET = ['#2a2f38', '#4d5a6b', '#8c9bb0', '#dfe7f0'];  // machines
+const RCK = ['#2e2e33', '#5d5d66', '#9a9aa6', '#d6d6de'];  // rock
+const GRN = ['#2f4a2a', '#4f7a3a', '#7fa653', '#b9d47e'];  // young plants
+const ACC = '#e6b83c';                                      // gold accent
+const SEASONS = ['Spring', 'Summer', 'Autumn', 'Winter'];
+const SEASONPAL = [
+  { gr: ['#3c5a2e', '#6e9447', '#a8c473', '#cfe0a0'], tr: ['#24401f', '#3f6b30', '#639a45', '#9cc46a'], fl: '#f2a4c0' },
+  { gr: ['#33521f', '#5f8a33', '#96b957', '#c6da88'], tr: ['#1f3a19', '#356028', '#4f8a38', '#84b257'], fl: '#f0d24e' },
+  { gr: ['#4a3e1c', '#8a7030', '#bba055', '#dcc98c'], tr: ['#4a2a12', '#8a4a18', '#c47a20', '#e8b04a'], fl: '#e07a2a' },
+  { gr: ['#6f7d88', '#a2b2be', '#d2dee6', '#f2f6fa'], tr: ['#474751', '#6a6a74', '#8f8f99', '#bcc0c8'], fl: '#e6eef6' }
+];
+const CROPPAL = {
+  turnip:  ['#2f4a2a', '#6a9a46', '#b9c9a0', '#f7f3e6'],
+  cabbage: ['#24401f', '#4a7a33', '#cfe6a0', '#7fb347'],
+  corn:    ['#3a3a18', '#4a7a33', '#8fbb55', '#f0cf4e'],
+  pumpkin: ['#4a2410', '#8a4415', '#f2b25a', '#e07a1f'],
+  berry:   ['#2f4a2a', '#d8402f', '#8fbb55', '#cfe89a']
+};
+let VW = 195, VH = 420, scale = 2, ctrlH = 100, satTop = 0;
+
+/* ================= sprites ================= */
+function spr(rows, pal) {
+  const q = pal || P;
+  const h = rows.length, w = Math.max(...rows.map(r => r.length));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  for (let j = 0; j < h; j++) for (let i = 0; i < rows[j].length; i++) {
+    const ch = rows[j][i];
+    if (ch === '.') continue;
+    x.fillStyle = q[+ch]; x.fillRect(i, j, 1, 1);
+  }
+  return c;
+}
+function flip(c) {
+  const f = document.createElement('canvas'); f.width = c.width; f.height = c.height;
+  const x = f.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(c, 0, 0);
+  return f;
+}
+const pair = (rows, pal) => { const r = spr(rows, pal); return [flip(r), r]; };
+
+const SC = spr([
+  "....0000....","...022220...","...022220...",".0000000000.",
+  "..03333330..","..03033030..","..03333330..","..03011030..","...033330...",
+  "220111111022","2.01111110.2","...011110...","...012210...","...011110...",
+  "....2002....",".....00.....",".....00....."
+], SCP);
+const SC_BACK = spr([
+  "....0000....","...022220...","...022220...",".0000000000.",
+  "..03333330..","..03333330..","..03333330..","..03333330..","...033330...",
+  "220111111022","2.01111110.2","...011110...","...011110...","...011110...",
+  "....2002....",".....00.....",".....00....."
+], SCP);
+const SC_F = spr([
+  "....0000....","...022220...","...022220...",".0000000000.",
+  "2.03333330.2","220303303022",".1033333301.",".1030110301.","..10333301..",
+  "...011110...","...011110...","...011110...","...012210...","...011110...",
+  "....2002....",".....00.....",".....00....."
+], SCP);
+const S = {
+  crow: pair(["......000.",".....00300","0...000022","00000000..",".0000000..","..00000...","...0..0..."], CRW),
+  f1: pair(["0........0","00......00",".00.00.00.","..000030..","...00002..","....00...."], CRW),
+  f2: pair(["..........","...0000...","..000030..",".00000002.","00......00","0........0"], CRW),
+  chime: spr(["...0000...","0000000000","00.0220.00","33.0220.33","33.0220.33","00.0220.00",
+    "...0220...","...0220...","...0220...","...0220...","...0220...","..000000.."], MET),
+  sprinkler: spr(["...00...","..0330..","...00...",".000000.","02222220","02111120",".000000."], MET),
+  drill: spr([
+    "..00000000..",
+    ".0222222220.",
+    "023333333320",
+    "023300003320",
+    "023333333320",
+    "022222222220",
+    ".0022222200.",
+    "...022220...",
+    "...002200...",
+    "000000000000",
+    "033000000330",
+    "030300003030",
+    "033000000330",
+    "000000000000"], MET),
+  picker: spr([
+    "...0000000..",
+    "..02222220..",
+    ".0233333320.",
+    "023322223320",
+    "023233332320",
+    "023322223320",
+    ".0233333320.",
+    "..02222220..",
+    "000000000000",
+    "033000000330",
+    "030300003030",
+    "033000000330",
+    "000000000000"], MET),
+  tower: spr([
+    "...000000...",
+    "..02222220..",
+    ".0233333320.",
+    "02333333320.",
+    "02322222320.",
+    "02333333320.",
+    "02222222220.",
+    ".0022222200.",
+    "...0.00.0...",
+    "..00.00.00..",
+    "..0..00..0..",
+    ".00..00..00.",
+    ".0...00...0.",
+    "000.0000.000"], MET),
+  cart: spr([
+    ".....0000000",
+    "....03333330",
+    "0000333333330",
+    "023303333330",
+    "023300000000",
+    "023300......",
+    "000000000000",
+    "022222222220",
+    "000000000000",
+    ".0330...0330",
+    "03003...03003",
+    ".0330...0330"], WD),
+  weed: spr(["0...0...","01.010.0",".010.010","..0110.."], GRN),
+  rock: spr(["...000000...","..02222220..",".0222333220.","022223322220","022222222220","012222222210",".0111111110.","..00000000.."], RCK),
+  rockCracked: spr(["...000000...","..02202220..",".0220333220.","022203322220","022220222220","012222022210",".0111111110.","..00000000.."], RCK)
+};
+
+const COMMON = [
+  ["..3..3..","...33...","..3..3.."],
+  [".030030.","..0330..","...03...","..0000.."],
+  ["..0..0..",".030030.",".033330.","..0330..","..0110.."]
+];
+const CROPDEF = {
+  turnip: { name: 'Turnip', short: 'turnip', days: 3, seed: 4, sell: 12, rep: 0, seasons: [0, 2],
+    grown: ["..0..0..",".030030.","..0330..","...33...","..0000.."],
+    ripe: ["..0..0..",".030030.","..0330..","..0000..",".033330.","03333330",".033330.","...00..."] },
+  cabbage: { name: 'Cabbage', short: 'cabbage', days: 4, seed: 10, sell: 28, rep: 0, seasons: [0, 2],
+    grown: ["..0000..",".033330.","03322330",".033330.","..0110.."],
+    ripe: ["..0000..",".033330.","03322330","03233230","03322330",".033330.","..0110.."] },
+  corn: { name: 'Corn', short: 'corn', days: 5, seed: 15, sell: 45, rep: 1, seasons: [1],
+    grown: ["...0....","..030...",".0330...","..030.0.","..03030.","...030..","..0330..","...03...","...03...","..0000.."],
+    ripe: ["...00...","..0330..",".030030.",".033330.","00030300","02203030","02203300","00003030","...030..","..0000.."] },
+  pumpkin: { name: 'Pumpkin', short: 'pumpkin', days: 6, seed: 20, sell: 70, rep: 0, seasons: [1, 2],
+    grown: ["...01...",".00100..","0222220.","0222220.",".00000.."],
+    ripe: ["....01....","..000100..",".03232330.","0332323330","0332323330",".03232330.","..000000.."] },
+  berry: { name: 'Strawberry', short: 'berry', days: 5, seed: 30, sell: 20, rep: 2, regrow: 2, seasons: [0, 1],
+    grown: ["........","..0..0..",".030030.","03333330",".033330.","..0110.."],
+    ripe: ["..0..0..",".030030.","03313130","03111330","03331130",".033330.","..0110.."] }
+};
+const CROPS = Object.keys(CROPDEF);
+const COMMON_S = COMMON.map(r => spr(r, GRN));
+for (const k of CROPS) { CROPDEF[k].grownS = spr(CROPDEF[k].grown, GRN); CROPDEF[k].ripeS = spr(CROPDEF[k].ripe, CROPPAL[k]); }
+function cropSprite(c) {
+  const d = CROPDEF[c.type];
+  if (c.stage >= d.days) return d.ripeS;
+  if (c.stage >= d.days - 1) return d.grownS;
+  return COMMON_S[Math.min(c.stage, 2)];
+}
+
+/* ================= font ================= */
+const F = {
+  A:[2,5,7,5,5],B:[6,5,6,5,6],C:[3,4,4,4,3],D:[6,5,5,5,6],E:[7,4,6,4,7],F:[7,4,6,4,4],
+  G:[3,4,5,5,3],H:[5,5,7,5,5],I:[7,2,2,2,7],J:[1,1,1,5,2],K:[5,5,6,5,5],L:[4,4,4,4,7],
+  M:[5,7,7,5,5],N:[6,5,5,5,5],O:[2,5,5,5,2],P:[6,5,6,4,4],Q:[2,5,5,6,3],R:[6,5,6,5,5],
+  S:[3,4,2,1,6],T:[7,2,2,2,2],U:[5,5,5,5,7],V:[5,5,5,5,2],W:[5,5,7,7,5],X:[5,5,2,5,5],
+  Y:[5,5,2,2,2],Z:[7,1,2,4,7],
+  '0':[7,5,5,5,7],'1':[2,6,2,2,7],'2':[6,1,2,4,7],'3':[6,1,2,1,6],'4':[5,5,7,1,1],
+  '5':[7,4,6,1,6],'6':[3,4,6,5,2],'7':[7,1,2,2,2],'8':[2,5,2,5,2],'9':[2,5,3,1,6],
+  ' ':[0,0,0,0,0],'!':[2,2,2,0,2],':':[0,2,0,2,0],'-':[0,0,7,0,0],'.':[0,0,0,0,2],
+  ',':[0,0,0,2,4],"'":[2,2,0,0,0],'/':[1,1,2,4,4],'?':[6,1,2,0,2],'+':[0,2,7,2,0],'$':[3,6,2,3,6],
+  '(':[1,2,2,2,1],')':[4,2,2,2,4]
+};
+const textW = (s, sc = 1) => String(s).length * 4 * sc - sc;
+function txt(s, x, y, col = 3, sc = 1, align = 'l') {
+  s = String(s).toUpperCase();
+  const w = textW(s, sc);
+  x = Math.round(x); y = Math.round(y);
+  if (align === 'c') x = Math.round(x - w / 2); else if (align === 'r') x = x - w;
+  g.fillStyle = P[col];
+  for (const ch of s) {
+    const gl = F[ch];
+    if (gl) for (let r = 0; r < 5; r++) for (let c = 0; c < 3; c++)
+      if ((gl[r] >> (2 - c)) & 1) g.fillRect(x + c * sc, y + r * sc, sc, sc);
+    x += 4 * sc;
+  }
+}
+function txtC(s, x, y, colour, sc = 1, align = 'l') {
+  const old = P[3]; P[3] = colour; txt(s, x, y, 3, sc, align); P[3] = old;
+}
+function txtO(s, x, y, col = 3, sc = 1, align = 'l', oc = 0) {
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) txt(s, x + dx, y + dy, oc, sc, align);
+  txt(s, x, y, col, sc, align);
+}
+function box(x, y, w, h, fill = 0) {
+  x = Math.round(x); y = Math.round(y);
+  g.fillStyle = P[0];
+  for (let i = 0; i < w + 5; i++) if (i % 2 === 0) g.fillRect(x - 1 + i, y + h + 3, 1, 1);
+  for (let i = 0; i < h + 5; i++) if (i % 2 === 0) g.fillRect(x + w + 3, y - 1 + i, 1, 1);
+  g.fillStyle = P[3]; g.fillRect(x - 3, y - 3, w + 6, h + 6);
+  g.fillStyle = P[0]; g.fillRect(x - 2, y - 2, w + 4, h + 4);
+  g.fillStyle = P[fill]; g.fillRect(x, y, w, h);
+  g.fillStyle = P[1];
+  g.fillRect(x - 1, y - 1, w + 2, 1); g.fillRect(x - 1, y + h, w + 2, 1);
+  g.fillRect(x - 1, y - 1, 1, h + 2); g.fillRect(x + w, y - 1, 1, h + 2);
+  g.fillStyle = P[3];
+  for (const [cx, cy] of [[x - 1, y - 1], [x + w - 1, y - 1], [x - 1, y + h - 1], [x + w - 1, y + h - 1]]) g.fillRect(cx, cy, 2, 2);
+}
+function rule(x, y, w, col = 1) {
+  g.fillStyle = P[col]; g.fillRect(x + 2, y, w - 4, 1);
+  g.fillRect(x, y, 1, 1); g.fillRect(x + w - 1, y, 1, 1);
+}
+function wrap(s, max) {
+  const words = s.split(' '), out = []; let line = '';
+  for (const w of words) { if ((line + ' ' + w).trim().length > max) { if (line) out.push(line); line = w; } else line = (line + ' ' + w).trim(); }
+  if (line) out.push(line);
+  return out;
+}
+
+/* ================= map ================= */
+const STATIC = {};
+const put = (x0, y0, w, h, type) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) STATIC[x + ',' + y] = type; };
+put(2, 1, 3, 2, 'shack');
+put(5, 2, 1, 1, 'bin');
+put(1, 4, 1, 1, 'crate');
+put(3, 5, 1, 1, 'board');
+put(6, 4, 1, 1, 'box');
+put(1, 14, 3, 3, 'pond');
+const TREES = [[1, 19], [4, 19], [2, 22], [5, 23], [1, 26], [4, 27], [2, 30], [5, 31], [1, 33], [6, 33]];
+for (const [x, y] of TREES) put(x, y, 1, 1, 'tree');
+const isBorder = (x, y) => x <= 0 || y <= 0 || x >= WC - 1 || y >= WR - 1;
+const tillable = (x, y) => x >= 9 && x <= WC - 2 && y >= 1 && y <= WR - 2;
+const pxTile = (px, py) => [Math.floor(px / TS), Math.floor(py / TS)];
+
+function rng(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+const bg = document.createElement('canvas'); bg.width = WW; bg.height = WH;
+const POND = { x: TS, y: 14 * TS, w: 48, h: 48 };
+function buildBg(season) {
+  const SGR = season ? season.gr : GR, STR = season ? season.tr : TR, SFL = season ? season.fl : '#f2a4c0';
+  const snow = season === SEASONPAL[3];
+  const b = bg.getContext('2d'), r = rng(21);
+  let C = SGR;
+  const use = q => { C = q; };
+  const R = (c, x, y, w, h) => { b.fillStyle = C[c]; b.fillRect(x, y, w, h); };
+  const dot = (c, x, y) => { b.fillStyle = C[c]; b.fillRect(x, y, 1, 1); };
+  const free = (x, y) => { const [tx, ty] = pxTile(x, y); return !tillable(tx, ty) && !STATIC[tx + ',' + ty] && !STATIC[tx + ',' + (ty + 1)]; };
+  R(3, 0, 0, WW, WH);
+
+  // soft meadow patches
+  for (let i = 0; i < 46; i++) {
+    const cx = r() * WW, cy = r() * WH, rad = 10 + r() * 16;
+    for (let y = -rad; y <= rad; y++) for (let x = -rad; x <= rad; x++) {
+      const d = (x * x + y * y) / (rad * rad);
+      if (d > 1) continue;
+      const px = Math.round(cx + x), py = Math.round(cy + y);
+      if (px < 0 || py < 0 || px >= WW || py >= WH) continue;
+      const core = px % 2 === 0 && py % 2 === 0;
+      if (d < .55 ? core : core && (px + py) % 4 === 0) dot(2, px, py);
+    }
+  }
+  for (let i = 0; i < 1500; i++) dot(2, r() * WW | 0, r() * WH | 0);
+
+  // grass tufts
+  for (let i = 0; i < 300; i++) {
+    const x = 6 + r() * (WW - 14) | 0, y = 26 + r() * (WH - 48) | 0;
+    if (!free(x, y)) continue;
+    const c = r() < .72 ? 2 : 1;
+    dot(c, x, y); dot(c, x, y + 1);
+    dot(c, x + 2, y - 2); dot(c, x + 2, y - 1); dot(c, x + 2, y); dot(c, x + 2, y + 1);
+    dot(c, x + 4, y); dot(c, x + 4, y + 1);
+  }
+  // little flowers
+  for (let i = 0; i < 90; i++) {
+    const x = 8 + r() * (WW - 18) | 0, y = 28 + r() * (WH - 54) | 0;
+    if (!free(x, y)) continue;
+    for (const [ox, oy] of [[0, 0], [4, 2], [-3, 3]]) {
+      const fx = x + ox, fy = y + oy;
+      dot(1, fx, fy - 1); dot(1, fx - 1, fy); dot(1, fx + 1, fy); dot(1, fx, fy + 1);
+      b.fillStyle = SFL; b.fillRect(fx, fy, 1, 1);
+    }
+  }
+
+  // dirt path
+  use(SOI);
+  const inPath = (x, y) =>
+    (x >= 7 * TS + 2 && x < 8 * TS - 2 && y >= 3 * TS + 4 && y < WH - 14) ||
+    (y >= 3 * TS + 4 && y < 3 * TS + 13 && x >= 2 * TS + 6 && x < 8 * TS - 2);
+  for (let y = 3 * TS; y < WH - 12; y++) for (let x = 2 * TS; x < 8 * TS; x++) {
+    if (!inPath(x, y)) continue;
+    const edge = !inPath(x - 1, y) || !inPath(x + 1, y) || !inPath(x, y - 1) || !inPath(x, y + 1);
+    const edge2 = !inPath(x - 2, y) || !inPath(x + 2, y) || !inPath(x, y - 2) || !inPath(x, y + 2);
+    if (edge && (x + y) % 2) continue;
+    if (edge2 && (x * 3 + y * 7) % 5 === 0) continue;
+    dot(2, x, y);
+    if (r() < .07) dot(1, x, y);
+  }
+  for (let i = 0; i < 36; i++) {
+    const x = 7 * TS + 3 + r() * 8 | 0, y = 3 * TS + 20 + r() * (WH - 3 * TS - 44) | 0;
+    R(1, x, y, 3, 2); dot(3, x + 1, y);
+  }
+
+  // field markers
+  use(SGR);
+  b.fillStyle = C[2];
+  const fx0 = 9 * TS - 1, fx1 = (WC - 1) * TS, fy0 = TS - 1, fy1 = (WR - 1) * TS;
+  for (let x = fx0; x <= fx1; x += 4) { b.fillRect(x, fy0, 2, 1); b.fillRect(x, fy1, 2, 1); }
+  for (let y = fy0; y <= fy1; y += 4) { b.fillRect(fx0, y, 1, 2); b.fillRect(fx1, y, 1, 2); }
+  for (let y = fy0; y < fy1; y += TS * 4) { R(0, fx0 - 1, y - 4, 2, 9); R(2, fx0 - 1, y - 3, 1, 7); }
+
+  // fence
+  use(WD);
+  const fy = 4;
+  R(0, 0, fy + 3, WW, 1); R(3, 0, fy + 4, WW, 1); R(0, 0, fy + 5, WW, 1); R(0, 0, fy + 8, WW, 1); R(3, 0, fy + 9, WW, 1); R(0, 0, fy + 10, WW, 1);
+  for (let x = 2; x < WW; x += 12) { R(0, x, fy, 4, 13); R(2, x + 1, fy + 1, 2, 11); R(3, x + 1, fy + 1, 1, 11); }
+  const by = WH - 12;
+  R(0, 0, by + 2, WW, 1); R(3, 0, by + 3, WW, 1); R(0, 0, by + 4, WW, 1); R(0, 0, by + 7, WW, 1); R(3, 0, by + 8, WW, 1); R(0, 0, by + 9, WW, 1);
+  for (let x = 2; x < WW; x += 12) { R(0, x, by - 1, 4, 13); R(2, x + 1, by, 2, 11); R(3, x + 1, by, 1, 11); }
+  for (const sx of [4, WW - 10]) {
+    R(0, sx + 2, 14, 1, WH - 26); R(0, sx + 4, 14, 1, WH - 26); R(3, sx + 3, 14, 1, WH - 26);
+    for (let y = 16; y < WH - 14; y += 12) { R(0, sx, y, 7, 4); R(2, sx + 1, y + 1, 5, 2); }
+  }
+
+  // shack
+  use(SGR);
+  const hx = 2 * TS, hy = TS;
+  b.fillStyle = C[2];
+  for (let y = hy + 30; y < hy + 36; y++) for (let x = hx - 2; x < hx + 50; x++) if ((x + y) % 2 === 0) b.fillRect(x, y, 1, 1);
+  use(WD);
+  R(0, hx + 34, hy - 12, 6, 12); R(2, hx + 35, hy - 11, 4, 11); R(3, hx + 35, hy - 11, 1, 11);
+  for (let i = 0; i < 18; i++) {
+    const w = 10 + i * 2, x0 = hx + 24 - w / 2;
+    R(0, x0 - 1, hy - 14 + i, w + 2, 1);
+    b.fillStyle = C[(i % 4 === 3) ? 0 : 2];
+    for (let xx = x0; xx < x0 + w; xx++) if (i % 4 === 3 || (xx + i) % 3) b.fillRect(xx, hy - 14 + i, 1, 1);
+    b.fillStyle = C[3];
+    for (let xx = x0; xx < x0 + w; xx++) if (i % 4 === 0 && (xx + i) % 3 === 0) b.fillRect(xx, hy - 14 + i, 1, 1);
+  }
+  R(0, hx - 1, hy + 4, 50, 1);
+  use(HS);
+  R(0, hx + 2, hy + 5, 44, 27); R(3, hx + 3, hy + 5, 42, 26);
+  for (let yy = hy + 8; yy < hy + 31; yy += 3) R(2, hx + 3, yy, 42, 1);
+  R(1, hx + 3, hy + 5, 1, 26); R(1, hx + 44, hy + 5, 1, 26);
+  R(0, hx + 19, hy + 14, 11, 18); R(1, hx + 20, hy + 15, 9, 17); R(2, hx + 20, hy + 15, 1, 17); R(3, hx + 26, hy + 23, 1, 2);
+  for (const wx of [hx + 6, hx + 34]) {
+    R(0, wx, hy + 11, 9, 9); R(2, wx + 1, hy + 12, 7, 7); R(3, wx + 1, hy + 12, 3, 3);
+    R(0, wx + 4, hy + 11, 1, 9); R(0, wx, hy + 15, 9, 1);
+  }
+
+  // shipping bin (5,2)
+  use(WD);
+  const bx = 5 * TS, bby = 2 * TS;
+  R(0, bx + 1, bby + 4, 14, 11); R(2, bx + 2, bby + 5, 12, 9);
+  R(0, bx + 2, bby + 9, 12, 1); R(1, bx + 2, bby + 10, 12, 1); R(3, bx + 2, bby + 5, 12, 1);
+  R(0, bx, bby + 2, 16, 3); R(1, bx + 1, bby + 3, 14, 1); R(3, bx + 6, bby + 6, 4, 2);
+
+  // seed crate (1,4)
+  const cx = TS, cy = 4 * TS;
+  R(0, cx + 1, cy + 5, 14, 10); R(2, cx + 2, cy + 6, 12, 8); R(3, cx + 2, cy + 6, 12, 1);
+  for (let i = 0; i < 8; i++) { R(0, cx + 2 + (i * 1.5 | 0), cy + 6 + i, 1, 1); R(0, cx + 13 - (i * 1.5 | 0), cy + 6 + i, 1, 1); }
+  R(0, cx + 3, cy + 1, 4, 5); R(3, cx + 4, cy + 2, 2, 3);
+  R(0, cx + 8, cy, 4, 6); R(3, cx + 9, cy + 1, 2, 4); R(1, cx + 9, cy + 3, 2, 1);
+
+  // notice board (3,5)
+  const nx = 3 * TS, ny = 5 * TS;
+  R(0, nx + 2, ny + 6, 2, 10); R(0, nx + 12, ny + 6, 2, 10);
+  R(0, nx, ny - 3, 16, 12); R(2, nx + 1, ny - 2, 14, 10); R(3, nx + 1, ny - 2, 14, 1);
+  R(0, nx + 2, ny - 1, 5, 6); R(3, nx + 3, ny, 3, 4); R(0, nx + 8, ny, 5, 5); R(3, nx + 9, ny + 1, 3, 3);
+  R(1, nx + 3, ny + 1, 3, 1); R(1, nx + 9, ny + 2, 3, 1);
+
+  // order box (6,4)
+  const ox = 6 * TS, oy = 4 * TS;
+  R(0, ox + 1, oy + 3, 14, 12); R(3, ox + 2, oy + 4, 12, 10); R(0, ox + 2, oy + 7, 12, 1);
+  R(2, ox + 2, oy + 12, 12, 2);
+  R(0, ox + 6, oy + 9, 4, 3); R(1, ox + 7, oy + 10, 2, 1);
+  R(0, ox + 7, oy - 4, 2, 7); R(0, ox + 9, oy - 4, 5, 3); R(3, ox + 10, oy - 3, 3, 1);
+
+  // pond with a dithered shore
+  use(WAT);
+  const px = POND.x, py = POND.y, pw = POND.w, ph = POND.h;
+  for (let y = -4; y < ph + 4; y++) for (let x = -4; x < pw + 4; x++) {
+    const ux = (x - pw / 2 + .5) / (pw / 2 - 1), uy = (y - ph / 2 + .5) / (ph / 2 - 3), d = ux * ux + uy * uy;
+    if (d > 1.5) continue;
+    if (d > 1) { if ((px + x + py + y) % 2 === 0 && d < 1.25) { b.fillStyle = SOI[3]; b.fillRect(px + x, py + y, 1, 1); } continue; }
+    dot(d > .84 ? 0 : 1, px + x, py + y);
+  }
+  b.fillStyle = C[2];
+  for (const [x, y, w] of [[12, 16, 6], [26, 24, 8], [16, 32, 5], [30, 14, 4]]) b.fillRect(px + x, py + y, w, 1);
+  use(STR);
+  for (const [lx, ly] of [[14, 26], [30, 34]]) {
+    R(0, px + lx - 3, py + ly - 2, 7, 5); R(2, px + lx - 2, py + ly - 1, 5, 3); R(3, px + lx - 1, py + ly - 1, 2, 1);
+  }
+  use(SGR);
+  use(STR);
+  for (const [x, y] of [[4, 8], [40, 36], [6, 38]]) { R(0, px + x, py + y - 5, 1, 6); R(0, px + x + 2, py + y - 7, 1, 8); R(1, px + x + 2, py + y - 8, 1, 2); }
+  use(SGR);
+
+  // trees
+  for (const [tx, ty] of TREES) {
+    use(SGR);
+    const x = tx * TS + 8, y = ty * TS + 14;
+    b.fillStyle = C[2];
+    for (let yy = -2; yy <= 2; yy++) for (let xx = -9; xx <= 9; xx++)
+      if (xx * xx / 81 + yy * yy / 4 <= 1 && (x + xx + y + yy) % 2 === 0) b.fillRect(x + xx, y + yy, 1, 1);
+    use(WD);
+    R(0, x - 3, y - 10, 6, 10); R(1, x - 2, y - 10, 4, 10); R(2, x - 2, y - 10, 1, 10);
+    use(STR);
+    const lobes = [[0, -19, 9], [-7, -13, 7], [7, -13, 7], [0, -12, 8]];
+    const inC = (qx, qy) => lobes.some(([lx, ly, lr]) => {
+      const dx = qx - (x + lx), dy = (qy - (y + ly)) * 1.12;
+      return dx * dx + dy * dy <= lr * lr;
+    });
+    for (let qy = y - 30; qy <= y - 3; qy++) for (let qx = x - 17; qx <= x + 17; qx++) {
+      if (!inC(qx, qy)) continue;
+      const outline = !inC(qx - 1, qy) || !inC(qx + 1, qy) || !inC(qx, qy - 1) || !inC(qx, qy + 1);
+      let c;
+      if (outline) c = 0;
+      else {
+        const rel = (qy - (y - 28)) / 25;
+        c = rel < .32 ? 3 : rel < .62 ? ((qx + qy) % 2 ? 2 : 3) : rel < .85 ? ((qx + qy) % 2 ? 1 : 2) : 1;
+        if (rel < .5 && qx < x - 4 && (qx + qy) % 3) c = 3;
+      }
+      dot(c, qx, qy);
+    }
+  }
+  if (snow) {
+    b.fillStyle = '#f8fbff';
+    for (let i = 0; i < 900; i++) { const x = r() * WW | 0, y = r() * WH | 0; b.fillRect(x, y, 1, 1); }
+  }
+  drawStructures(b, use, R, dot);
+}
+function drawStructures(b, use, R, dot) {
+  // processing shed (5,6)
+  if (built.shed) {
+    const x = 5 * TS, y = 6 * TS;
+    use(WD);
+    R(0, x - 1, y - 8, 18, 1);
+    for (let i = 0; i < 7; i++) { R(0, x + 1 - i / 2, y - 7 + i, 14 + i, 1); }
+    R(0, x, y - 1, 16, 17); R(2, x + 1, y, 14, 15);
+    for (let yy = y + 2; yy < y + 15; yy += 3) R(1, x + 1, yy, 14, 1);
+    R(0, x + 5, y + 6, 7, 10); R(1, x + 6, y + 7, 5, 9); R(3, x + 9, y + 11, 1, 2);
+    R(0, x + 11, y - 12, 3, 5); R(2, x + 12, y - 11, 1, 4);
+    use(MET); R(2, x + 2, y + 2, 4, 3); R(3, x + 3, y + 3, 2, 1);
+  }
+  // barn (2..4, 7..8)
+  if (built.barn) {
+    const x = 2 * TS, y = 7 * TS;
+    use(WD);
+    for (let i = 0; i < 12; i++) { const w = 14 + i * 3; R(0, x + 24 - w / 2, y - 12 + i, w, 1); }
+    R(0, x, y, 48, 32); R(1, x + 1, y + 1, 46, 30);
+    R(2, x + 1, y + 1, 46, 2);
+    for (let yy = y + 5; yy < y + 31; yy += 4) R(0, x + 1, yy, 46, 1);
+    R(0, x + 16, y + 10, 16, 22); R(3, x + 17, y + 11, 14, 21);
+    R(0, x + 23, y + 11, 2, 21); R(0, x + 17, y + 20, 14, 2);
+    R(3, x + 20, y - 6, 8, 6); R(0, x + 19, y - 7, 10, 1);
+  }
+  // greenhouse (2..4, 10..11)
+  if (built.green) {
+    const x = 2 * TS, y = 10 * TS;
+    use(MET);
+    R(0, x, y - 6, 48, 38); R(2, x + 1, y - 5, 46, 36);
+    use(WAT);
+    for (let yy = y - 4; yy < y + 30; yy++) for (let xx = x + 2; xx < x + 46; xx++) {
+      const edge = (xx - x) % 8 === 0 || (yy - y) % 9 === 0;
+      b.fillStyle = edge ? MET[1] : ((xx + yy) % 2 ? WAT[3] : '#dff3f8');
+      b.fillRect(xx, yy, 1, 1);
+    }
+    use(GRN);
+    for (let i = 0; i < 6; i++) { const gx = x + 6 + i * 7, gy = y + 20; R(1, gx, gy, 1, 6); R(2, gx - 1, gy + 1, 3, 1); R(3, gx, gy - 2, 1, 2); }
+    use(MET); R(0, x + 20, y + 16, 8, 16); R(3, x + 21, y + 17, 6, 15);
+  }
+  // windmill (6,7)
+  if (built.mill) {
+    const x = 6 * TS, y = 7 * TS;
+    use(WD);
+    for (let i = 0; i < 29; i++) {
+      const w = 8 - Math.round(i * .11);
+      R(0, x + 8 - w, y + 15 - i, w * 2, 1);
+      b.fillStyle = (i % 4 === 0) ? WD[1] : WD[2];
+      b.fillRect(x + 9 - w, y + 15 - i, w * 2 - 2, 1);
+    }
+    R(0, x + 6, y + 8, 5, 8); R(1, x + 7, y + 9, 3, 7);
+    R(0, x + 3, y + 2, 4, 4); R(3, x + 4, y + 3, 2, 2);
+    use(MET);
+    R(0, x + 2, y - 17, 12, 6); R(2, x + 3, y - 16, 10, 4); R(3, x + 3, y - 16, 4, 1);
+    R(0, x + 6, y - 20, 4, 3); R(2, x + 7, y - 19, 2, 2);
+  }
+}
+function applyBuilt() {
+  for (const k in STATIC) if (STATIC[k] === 'shed' || STATIC[k] === 'barn' || STATIC[k] === 'green' || STATIC[k] === 'mill') delete STATIC[k];
+  if (built.shed) put(5, 6, 1, 1, 'shed');
+  if (built.barn) put(2, 7, 3, 2, 'barn');
+  if (built.green) put(2, 10, 3, 2, 'green');
+  if (built.mill) put(6, 7, 1, 1, 'mill');
+  refreshBg();
+}
+const isSoil = (x, y) => { const row = farm[y]; return !!(row && row[x] && row[x].soil); };
+function drawSoil(x, y, px, py, wet) {
+  const fill = wet ? 1 : 2, line = wet ? 0 : 1;
+  g.fillStyle = SOI[fill]; g.fillRect(px, py, TS, TS);
+  g.fillStyle = SOI[line];
+  for (let i = 0; i < TS; i++) {
+    const wy = py + i;
+    if (wy % 4 !== 1) continue;
+    for (let j = ((wy >> 2) & 1); j < TS; j += 2) g.fillRect(px + j, wy, 1, 1);
+  }
+  const up = isSoil(x, y - 1), dn = isSoil(x, y + 1), lf = isSoil(x - 1, y), rt = isSoil(x + 1, y);
+  g.fillStyle = SOI[0];
+  if (!up) g.fillRect(px, py, TS, 1);
+  if (!dn) g.fillRect(px, py + TS - 1, TS, 1);
+  if (!lf) g.fillRect(px, py, 1, TS);
+  if (!rt) g.fillRect(px + TS - 1, py, 1, TS);
+  if (up && lf && !isSoil(x - 1, y - 1)) g.fillRect(px, py, 1, 1);
+  if (up && rt && !isSoil(x + 1, y - 1)) g.fillRect(px + TS - 1, py, 1, 1);
+  if (dn && lf && !isSoil(x - 1, y + 1)) g.fillRect(px, py + TS - 1, 1, 1);
+  if (dn && rt && !isSoil(x + 1, y + 1)) g.fillRect(px + TS - 1, py + TS - 1, 1, 1);
+  if (!up) { g.fillStyle = SOI[wet ? 2 : 3]; for (let j = 1; j < TS - 1; j += 2) g.fillRect(px + j, py + 1, 1, 1); }
+}
+
+function makeDither(level) {
+  const c = document.createElement('canvas'); c.width = VW; c.height = VH;
+  const x = c.getContext('2d'), id = x.createImageData(VW, VH), d = id.data;
+  for (let y = 0; y < VH; y++) for (let i = 0; i < VW; i++) {
+    const on = level === 3 ? (i + y) % 2 === 0
+      : level === 2 ? (i % 2 === 0 && y % 2 === 0)
+      : (y % 2 === 0 && (i + (y % 4)) % 4 === 0);
+    if (on) { const o = (y * VW + i) * 4; d[o] = 26; d[o + 1] = 30; d[o + 2] = 72; d[o + 3] = 255; }
+  }
+  x.putImageData(id, 0, 0); return c;
+}
+let D50, D25, D12;
+
+/* ================= audio ================= */
+let ac = null;
+function au() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+  if (ac && ac.state === 'suspended') ac.resume();
+}
+function tone(f, d, type = 'triangle', v = .05, slide = 0, delay = 0) {
+  if (!ac) return;
+  const o = ac.createOscillator(), gn = ac.createGain(), t0 = ac.currentTime + delay;
+  o.type = type; o.frequency.setValueAtTime(f, t0);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), t0 + d);
+  gn.gain.setValueAtTime(v, t0); gn.gain.exponentialRampToValueAtTime(.0001, t0 + d);
+  o.connect(gn); gn.connect(ac.destination); o.start(t0); o.stop(t0 + d + .03);
+}
+const sfx = {
+  till() { tone(110, .08, 'square', .04, -40); tone(80, .06, 'triangle', .04, 0, .04); },
+  rock() { tone(90, .1, 'square', .05, -30); tone(220, .05, 'square', .03, -100, .02); },
+  plant() { tone(700, .05, 'triangle', .04, 200); },
+  water() { for (let i = 0; i < 4; i++) tone(1600 + Math.random() * 600, .04, 'sine', .02, 0, i * .05); },
+  refill() { tone(400, .25, 'sine', .04, 500); },
+  harvest() { tone(660, .07, 'square', .03, 300); tone(990, .08, 'square', .025, 0, .07); },
+  sell() { [880, 1175, 1568].forEach((f, i) => tone(f, .08, 'square', .03, 0, i * .07)); },
+  order() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, .12, 'square', .03, 0, i * .08)); },
+  buy() { tone(1320, .06, 'square', .03); tone(1760, .08, 'square', .025, 0, .06); },
+  nope() { tone(180, .15, 'square', .035, -40); },
+  shoo() { tone(320, .16, 'triangle', .07, -140); tone(160, .12, 'square', .02, -60); },
+  flee() { tone(560, .08, 'triangle', .03, 380); },
+  caw() { tone(700, .1, 'sawtooth', .018, -330); },
+  peck() { tone(140, .04, 'square', .025); },
+  tick() { tone(900, .03, 'square', .02); },
+  morning() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .16, 'triangle', .045, 0, i * .12)); },
+  night() { [784, 659, 587, 523, 392].forEach((f, i) => tone(f, .35, 'sine', .045, 0, i * .22)); }
+};
+
+/* ================= state ================= */
+const startMin = () => built.roof ? 300 : 360;
+const dayLen = () => (owned.lantern ? 215 : 170) + (built.roof ? 20 : 0);
+const endMin = () => owned.lantern ? 1320 : 1200;
+const MACH = {
+  chime:     { name: 'Wind chime',    short: 'Chime',     price: 50,  rep: 0, info: 'Crows keep away from it' },
+  sprinkler: { name: 'Sprinkler',     short: 'Sprinkler', price: 110, rep: 1, info: 'Waters the 8 tiles around it every morning' },
+  drill:     { name: 'Seed drill',    short: 'Drill',     price: 200, rep: 2, info: 'Sows its loaded seed on bare soil in a 3x3 each morning' },
+  picker:    { name: 'Harvester',     short: 'Picker',    price: 300, rep: 3, info: 'Picks ripe crops in a 5x5 into your basket each morning' },
+  tower:     { name: 'Water tower',   price: 450, rep: 4, short: 'Tower', info: 'Waters a whole 7x7 patch every morning' },
+  cart:      { name: 'Delivery cart', price: 600, rep: 5, short: 'Cart',  info: 'Each morning it fills your orders, then sells the rest' }
+};
+const UPG = {
+  can:     { name: 'Big watering can', price: 80,  rep: 0, info: 'Holds 20 water instead of 10' },
+  boots:   { name: 'Sturdy boots',     price: 130, rep: 1, info: 'You hop around the farm faster' },
+  hoe:     { name: 'Iron hoe',         price: 170, rep: 2, info: 'Breaks rocks in one swing' },
+  lantern: { name: 'Lantern',          price: 240, rep: 2, info: 'Work on until 22:00 each day' }
+};
+const MACHK = Object.keys(MACH);
+const PROD = {
+  soup:    { name: 'Turnip soup',  short: 'soup',    from: 'turnip',  n: 5, sell: 90 },
+  pickles: { name: 'Pickles',      short: 'pickles', from: 'cabbage', n: 3, sell: 115 },
+  meal:    { name: 'Cornmeal',     short: 'meal',    from: 'corn',    n: 3, sell: 155 },
+  pie:     { name: 'Pumpkin pie',  short: 'pie',     from: 'pumpkin', n: 2, sell: 190 },
+  jam:     { name: 'Berry jam',    short: 'jam',     from: 'berry',   n: 4, sell: 125 }
+};
+const PRODK = Object.keys(PROD);
+const GOODS = {};
+for (const k of CROPS) GOODS[k] = CROPDEF[k];
+for (const k of PRODK) GOODS[k] = PROD[k];
+const GOODSK = [...CROPS, ...PRODK];
+const BUILD = [
+  { k: 'roof',  name: 'Patch the roof',  price: 300,  info: 'You wake an hour earlier, so days run from 5:00' },
+  { k: 'shed',  name: 'Processing shed', price: 700,  info: 'Turn crops into soup, jam and pies worth far more' },
+  { k: 'barn',  name: 'Raise the barn',  price: 1300, info: 'Machines run again at noon, and you can hold 3 orders' },
+  { k: 'green', name: 'Greenhouse',      price: 2200, info: 'Plant anything in any season. Frost never bites' },
+  { k: 'mill',  name: 'Windmill',        price: 3400, info: 'Crows leave the whole farm alone. The farm is restored' }
+];
+const WEATHER = {
+  sun:     { name: 'Clear',     line: 'Clear skies today' },
+  rain:    { name: 'Rain',      line: 'Rain today. The crops water themselves' },
+  drought: { name: 'Dry spell', line: 'Dry spell. The soil will bake dry at noon' },
+  frost:   { name: 'Frost',     line: 'Frost tonight. Unripe crops will suffer' },
+  wind:    { name: 'Windy',     line: 'Too windy for crows, but weeds blow in' }
+};
+const WEATHER_ODDS = [
+  [['sun', .55], ['rain', .3], ['wind', .15]],
+  [['sun', .5], ['drought', .25], ['rain', .15], ['wind', .1]],
+  [['sun', .45], ['rain', .22], ['wind', .2], ['frost', .13]],
+  [['frost', .4], ['sun', .3], ['wind', .3]]
+];
+let SHOP = [];
+function buildShop() {
+  SHOP = [];
+  for (const k of CROPS) {
+    const d = CROPDEF[k];
+    SHOP.push({ k, price: d.seed, rep: d.rep, name: d.name + ' seeds', seed: true,
+      info: (d.regrow ? 'Ready in ' + d.days + ' days, then every ' + d.regrow + '. $' + d.sell
+        : 'Ready in ' + d.days + ' days. Sells for $' + d.sell) + '. ' + seasonNote(k) });
+  }
+  for (const k of MACHK) SHOP.push({ k, price: MACH[k].price, rep: MACH[k].rep, name: MACH[k].name, info: MACH[k].info, mach: true });
+  for (const k in UPG) if (!owned[k]) SHOP.push({ k, price: UPG[k].price, rep: UPG[k].rep, name: UPG[k].name, info: UPG[k].info, upg: true });
+  const next = BUILD.find(b => !built[b.k]);
+  if (next) SHOP.unshift({ k: next.k, price: next.price, name: next.name, info: next.info, build: true });
+}
+const ITEMS = [...CROPS, ...MACHK];
+const itemName = k => CROPDEF[k] ? CROPDEF[k].name : MACH[k].short;
+const seasonOf = d => Math.floor((d - 1) / 12) % 4;
+const seasonDay = d => ((d - 1) % 12) + 1;
+const inSeason = k => built.green || CROPDEF[k].seasons.includes(seasonOf(day));
+function seasonNote(k) {
+  const ss = CROPDEF[k].seasons.map(i => SEASONS[i]).join(' and ');
+  return 'Grows in ' + ss;
+}
+const CLIENTS = [
+  { n: "Crooked Spoon", rep: 0 }, { n: "Mabel's Bakery", rep: 0 }, { n: "Noodle Cart", rep: 1 },
+  { n: "Hilltop Inn", rep: 2 }, { n: "Grand Hotel", rep: 3 }
+];
+
+let state = 'title', clock = 0, t = 0, day = 1, weather = 'sun', weatherNext = 'sun', noonDone = false;
+let farm = [], crows = [], parts = [], texts = [], rings = [];
+let inv = null, coins = 0, can = 0, canMax = 10, sel = 'turnip', rep = 0, offers = [], orders = [], owned = {}, built = {}, shed = [];
+let music = true, musT = 2, musI = 0, holdUse = false;
+let flags = {}, msg = null, sleepArm = 0, menuIdx = 0, menuMsg = null, spawnT = 5, navT = 0;
+let dayStats = { earned: 0 }, cardLines = [], cardTitle = '', cardT = 0, hasSave = false, autoLines = [], shopTop = 0;
+const player = { x: 56, y: 62, fx: 0, fy: 1, step: 0, moving: false, bob: 0, flail: 0, cd: 0, act: 0 };
+const cam = { x: 0, y: 0 };
+
+function blankFarm() {
+  farm = [];
+  const r = rng(99);
+  for (let y = 0; y < WR; y++) {
+    const row = [];
+    for (let x = 0; x < WC; x++) {
+      const c = { soil: false, wet: false, crop: null, obj: null, hp: 0, seed: null };
+      if (tillable(x, y)) {
+        const starter = x <= 17 && y <= 9, v = r();
+        if (!starter && v < .07) { c.obj = 'rock'; c.hp = 2; }
+        else if (v < (starter ? .03 : .19)) c.obj = 'weed';
+      }
+      row.push(c);
+    }
+    farm.push(row);
+  }
+}
+function newGame() {
+  blankFarm();
+  inv = { basket: {} };
+  for (const k of ITEMS) inv[k] = 0;
+  for (const k of GOODSK) inv.basket[k] = 0;
+  inv.turnip = 8; inv.cabbage = 2;
+  coins = 30; canMax = 10; can = 10; sel = 'turnip'; day = 1; rep = 0;
+  weather = 'sun'; weatherNext = pickWeather(1);
+  offers = []; orders = []; flags = {}; owned = {}; built = {}; shed = [];
+  applyBuilt();
+  startDay(true);
+}
+function pickWeather(forDay) {
+  const table = WEATHER_ODDS[seasonOf(forDay)];
+  if (forDay <= 2) return 'sun';
+  let r = Math.random();
+  for (const [k, pr] of table) { if (r < pr) return k; r -= pr; }
+  return 'sun';
+}
+let bgSeason = -1;
+function refreshBg() {
+  const sn = seasonOf(day);
+  bgSeason = sn;
+  buildBg(SEASONPAL[sn]);
+}
+function startDay(first) {
+  state = 'day'; t = 0; crows = []; parts = []; texts = []; rings = []; noonDone = false;
+  weather = first ? (weather || 'sun') : weatherNext;
+  weatherNext = pickWeather(day + 1);
+  if (seasonOf(day) !== bgSeason) refreshBg();
+  if (weather === 'rain') for (const row of farm) for (const c of row) if (c.soil) c.wet = true;
+  const weeds = weather === 'wind' ? 14 : 6;
+  if (!first) for (let i = 0; i < weeds; i++) {
+    const x = 9 + Math.random() * (WC - 10) | 0, y = 1 + Math.random() * (WR - 2) | 0, c = farm[y][x];
+    if (!c.soil && !c.obj && tillable(x, y)) c.obj = 'weed';
+  }
+  // the shed finishes its batch overnight
+  const done = shed.splice(0, shed.length);
+  for (const k of done) inv.basket[k]++;
+  offers = offers.filter(o => o.posted >= day - 2);
+  while (offers.length < 3) offers.push(makeOffer());
+  player.x = 56; player.y = 62; player.fx = 0; player.fy = 1;
+  can = canMax; dayStats = { earned: 0 }; spawnT = 6; sleepArm = 0;
+  autoLines = first ? [] : runMachines();
+  if (done.length) autoLines.unshift('the shed made ' + done.map(k => PROD[k].short).join(' and '));
+  msg = { s: SEASONS[seasonOf(day)] + ' day ' + seasonDay(day) + '. ' + WEATHER[weather].line, t: 3.4 };
+  if (autoLines.length) msg = { s: 'Overnight: ' + autoLines.join(', '), t: 4.2 };
+  let anyCrop = false; for (const row of farm) for (const c of row) if (c.crop) anyCrop = true;
+  const seeds = CROPS.reduce((a, k) => a + inv[k], 0);
+  buildShop();
+  if (!first && coins < 4 && !anyCrop && !basketCount() && !seeds) {
+    inv.turnip += 4; sel = 'turnip'; msg = { s: 'Some turnip seeds blew in overnight', t: 3.5 };
+  }
+  snapCam();
+  if (!first) save();
+  updateItemBtn();
+  sfx.morning();
+}
+const clockMin = () => startMin() + (endMin() - startMin()) * Math.min(1, t / dayLen());
+const maxOrders = () => built.barn ? 3 : 2;
+function eachMach(kind, fn) {
+  for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) if (farm[y][x].obj === kind) fn(farm[y][x], x, y);
+}
+function area(x, y, r, fn) {
+  for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+    const c = farm[y + dy] && farm[y + dy][x + dx];
+    if (c) fn(c, x + dx, y + dy);
+  }
+}
+function runMachines() {
+  const L = [];
+  let picked = 0, sown = 0, watered = 0, dry = false;
+  eachMach('picker', (m, x, y) => area(x, y, 2, c => {
+    if (c.crop && c.crop.stage >= CROPDEF[c.crop.type].days) {
+      const d = CROPDEF[c.crop.type];
+      inv.basket[c.crop.type]++; picked++;
+      if (d.regrow) c.crop.stage = d.days - d.regrow; else c.crop = null;
+    }
+  }));
+  eachMach('drill', (m, x, y) => area(x, y, 1, c => {
+    if (c.soil && !c.crop && !c.obj && m.seed && inv[m.seed] > 0) { c.crop = { type: m.seed, stage: 0 }; inv[m.seed]--; sown++; }
+    else if (c.soil && !c.crop && !c.obj && m.seed && !inv[m.seed]) dry = true;
+  }));
+  const wet = c => { if (c.soil && !c.wet) { c.wet = true; watered++; } };
+  eachMach('sprinkler', (m, x, y) => area(x, y, 1, wet));
+  eachMach('tower', (m, x, y) => area(x, y, 3, wet));
+  if (picked) L.push('picked ' + picked);
+  if (sown) L.push('sowed ' + sown);
+  if (watered) L.push('watered ' + watered);
+  if (dry) L.push('a drill ran out of seed');
+  let hasCart = false;
+  eachMach('cart', () => { hasCart = true; });
+  if (hasCart) {
+    let money = 0, gave = 0, filled = [];
+    for (const o of orders) for (const k in o.items) {
+      const it = o.items[k], n = Math.min(inv.basket[k], it.need - it.got);
+      if (n > 0) { inv.basket[k] -= n; it.got += n; gave += n; }
+    }
+    const done = orders.filter(o => Object.values(o.items).every(v => v.got >= v.need));
+    for (const o of done) { money += o.reward; rep = Math.min(5, rep + 1); filled.push(o.client); }
+    orders = orders.filter(o => !done.includes(o));
+    for (const k of GOODSK) {
+      const keep = Math.min(inv.basket[k], reserved(k)), n = inv.basket[k] - keep;
+      money += n * GOODS[k].sell; inv.basket[k] = keep;
+    }
+    coins += money;
+    if (filled.length) L.push('the cart finished the ' + filled.join(' and ') + ' order');
+    else if (gave) L.push('the cart topped up your orders');
+    if (money) L.push('the cart brought back $' + money);
+  }
+  return L;
+}
+function clockStr() {
+  const m = Math.floor(clockMin() / 10) * 10, h = Math.floor(m / 60), mm = m % 60;
+  return h + ':' + (mm < 10 ? '0' : '') + mm;
+}
+const basketCount = () => inv ? GOODSK.reduce((a, k) => a + (inv.basket[k] || 0), 0) : 0;
+const say = (s, d = 2.4) => { msg = { s, t: d }; };
+
+/* ================= orders ================= */
+const pickR = a => a[Math.random() * a.length | 0];
+function makeOffer() {
+  const cpool = CLIENTS.filter(c => c.rep <= rep);
+  const used = offers.map(o => o.client).concat(orders.map(o => o.client));
+  const fresh = cpool.filter(c => !used.includes(c.n));
+  const client = pickR(fresh.length ? fresh : cpool);
+  let avail = CROPS.filter(k => CROPDEF[k].rep <= rep);
+  if (built.shed && rep >= 2) avail = avail.concat(PRODK.filter(k => CROPDEF[PROD[k].from].rep <= rep));
+  let kinds = 1 + (rep >= 1 && Math.random() < .5 ? 1 : 0) + (rep >= 3 && Math.random() < .4 ? 1 : 0);
+  kinds = Math.min(kinds, avail.length);
+  const pool = avail.slice(), items = {};
+  const base = { turnip: [3, 7], cabbage: [2, 5], corn: [2, 4], pumpkin: [1, 3], berry: [4, 8],
+    soup: [1, 2], pickles: [1, 2], meal: [1, 2], pie: [1, 2], jam: [1, 2] };
+  let value = 0, maxDays = 0;
+  for (let i = 0; i < kinds; i++) {
+    const k = pool.splice(Math.random() * pool.length | 0, 1)[0];
+    const [a, b] = base[k];
+    const q = Math.round((a + Math.random() * (b - a)) * (1 + rep * .2));
+    items[k] = { need: q, got: 0 };
+    value += q * GOODS[k].sell;
+    const d0 = CROPDEF[k] || CROPDEF[PROD[k].from];
+    maxDays = Math.max(maxDays, d0.days + (PROD[k] ? 2 : 0));
+  }
+  const bonus = client.rep >= 3 ? 1.9 : client.rep >= 2 ? 1.75 : 1.6;
+  const reward = Math.round(value * bonus / 5) * 5 + 10 * rep;
+  const due = day + maxDays + 2 + (Math.random() * 3 | 0);
+  return { client: client.n, items, due, reward, posted: day };
+}
+const reserved = k => orders.reduce((a, o) => a + (o.items[k] ? o.items[k].need - o.items[k].got : 0), 0);
+const orderLine = o => Object.entries(o.items).map(([k, v]) => v.need + ' ' + GOODS[k].short).join(', ');
+function deliver() {
+  if (!orders.length) { say('No orders yet. Check the notice board'); sfx.nope(); return; }
+  let given = 0;
+  for (const o of orders) for (const k in o.items) {
+    const it = o.items[k], n = Math.min(inv.basket[k], it.need - it.got);
+    if (n > 0) { inv.basket[k] -= n; it.got += n; given += n; }
+  }
+  if (!given) { say('Nothing in your basket for these orders'); sfx.nope(); return; }
+  flags.delivered = true;
+  const done = orders.filter(o => Object.values(o.items).every(v => v.got >= v.need));
+  if (done.length) {
+    for (const o of done) {
+      coins += o.reward; dayStats.earned += o.reward;
+      texts.push({ s: '+$' + o.reward, x: 6 * TS + 8, y: 4 * TS - 4, life: 1.6 });
+      setRep(rep + 1, o.client + ' loved it!');
+    }
+    orders = orders.filter(o => !done.includes(o));
+    sfx.order();
+  } else { say('Delivered ' + given + '. Keep going!'); sfx.sell(); }
+}
+function setRep(n, why) {
+  const before = rep; rep = Math.max(0, Math.min(5, n));
+  const newly = SHOP.filter(i => i.rep && i.rep > before && i.rep <= rep).map(i => i.name.toLowerCase());
+  if (newly.length) say(why + ' New at the crate: ' + newly.join(', '), 4);
+  else say(why + (rep > before ? ' Reputation up!' : ''), 3);
+}
+
+/* ================= save ================= */
+const SAVE_KEY = 'scarecrow-farm-v2';
+async function save() {
+  try {
+    if (!window.storage) return;
+    const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music,
+      farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0])) };
+    await window.storage.set(SAVE_KEY, JSON.stringify(data), false);
+    hasSave = true;
+  } catch (e) {}
+}
+async function checkSave() {
+  try { if (!window.storage) return; const r = await window.storage.get(SAVE_KEY, false); hasSave = !!(r && r.value); } catch (e) { hasSave = false; }
+}
+async function loadGame() {
+  try {
+    const r = await window.storage.get(SAVE_KEY, false);
+    const d = JSON.parse(r.value);
+    blankFarm();
+    d.farm.forEach((row, y) => row.forEach((a, x) => {
+      const c = farm[y][x]; c.soil = !!a[0]; c.wet = !!a[1]; c.obj = a[2] || null; c.hp = a[3] || 0;
+      c.crop = a[4] ? { type: a[4], stage: a[5] } : null; c.seed = a[6] || null;
+    }));
+    ({ day, coins, canMax, inv, sel, rep, offers, orders } = d);
+    flags = d.flags || {}; owned = d.owned || {}; built = d.built || {}; shed = d.shed || [];
+    weather = d.weather || 'sun'; weatherNext = d.weatherNext || 'sun';
+    if (typeof d.music === 'boolean') music = d.music;
+    for (const k of ITEMS) if (typeof inv[k] !== 'number') inv[k] = 0;
+    if (!inv.basket) inv.basket = {};
+    for (const k of GOODSK) if (typeof inv.basket[k] !== 'number') inv.basket[k] = 0;
+    applyBuilt();
+    startDay(true);
+  } catch (e) { newGame(); }
+}
+
+/* ================= actions ================= */
+const targetTile = () => pxTile(player.x + player.fx * 12, player.y - 5 + player.fy * 12);
+function getAction() {
+  const [tx, ty] = targetTile();
+  if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) return null;
+  const st = STATIC[tx + ',' + ty];
+  if (st === 'shack') return { label: 'Sleep', fn: trySleep };
+  if (st === 'bin') return { label: 'Sell', fn: sell };
+  if (st === 'crate') return { label: 'Shop', fn: () => openMenu('shop') };
+  if (st === 'board') return { label: 'Orders', fn: () => { openMenu('board'); flags.board = true; } };
+  if (st === 'box') return { label: 'Deliver', fn: deliver };
+  if (st === 'shed') return { label: 'Cook', fn: () => openMenu('shed') };
+  if (st === 'barn') return { label: 'Look', fn: () => say('The barn hums. Your machines run at noon too', 3) };
+  if (st === 'green') return { label: 'Look', fn: () => say('Under glass, anything grows in any season', 3) };
+  if (st === 'mill') return { label: 'Look', fn: () => say('The sails turn. No crow comes near the farm', 3) };
+  if (st === 'pond') return { label: 'Refill', fn: refill };
+  if (st || isBorder(tx, ty)) return null;
+  const c = farm[ty][tx];
+  if (c.obj === 'rock') return { label: 'Break', fn: () => {
+    c.hp -= owned.hoe ? 2 : 1; sfx.rock(); burst(tx * TS + 8, ty * TS + 10, 6, 2, 50, 70, RCK);
+    if (c.hp <= 0) { c.obj = null; burst(tx * TS + 8, ty * TS + 10, 10, 1, 70, 80, RCK); }
+  }};
+  if (c.obj === 'weed') return { label: 'Clear', fn: () => {
+    c.obj = null; sfx.till(); burst(tx * TS + 8, ty * TS + 10, 6, 1, 40, 60, GRN);
+    if (Math.random() < .12) {
+      const k = Math.random() < .7 ? 'turnip' : 'cabbage', n = k === 'turnip' ? 2 : 1;
+      inv[k] += n; texts.push({ s: 'Found ' + n + ' ' + k + ' seeds', x: tx * TS + 8, y: ty * TS - 4, life: 1.4 }); updateItemBtn();
+    }
+  }};
+  if (c.obj === 'drill' && CROPDEF[sel] && inv[sel] > 0 && c.seed !== sel) return { label: 'Load ' + CROPDEF[sel].name.toLowerCase(), fn: () => {
+    c.seed = sel; sfx.buy(); texts.push({ s: 'Drill loaded with ' + CROPDEF[sel].name.toLowerCase(), x: tx * TS + 8, y: ty * TS - 6, life: 1.4 });
+  }};
+  if (MACH[c.obj]) return { label: 'Pick up', fn: () => { inv[c.obj]++; c.obj = null; c.seed = null; sfx.tick(); updateItemBtn(); } };
+  if (c.crop) {
+    if (c.crop.stage >= CROPDEF[c.crop.type].days) return { label: 'Harvest', fn: () => harvest(c, tx, ty) };
+    if (!c.wet) return { label: 'Water', fn: () => water(c, tx, ty) };
+    return null;
+  }
+  const placeable = !!MACH[sel];
+  if (c.soil) {
+    if (placeable && inv[sel] > 0 && sel !== 'drill') return { label: 'Place', fn: () => {
+      c.obj = sel; c.seed = null; inv[sel]--; sfx.plant(); if (!inv[sel]) cycleItem(); updateItemBtn();
+    }};
+    if (!placeable && inv[sel] > 0) return { label: 'Plant', fn: () => plant(c) };
+    if (!c.wet) return { label: 'Water', fn: () => water(c, tx, ty) };
+    return null;
+  }
+  if (placeable && inv[sel] > 0) return { label: 'Place', fn: () => {
+    c.obj = sel; c.seed = null; inv[sel]--; sfx.plant();
+    if (sel === 'drill') say('Face the drill holding seeds to load it', 3);
+    if (!inv[sel]) cycleItem();
+    updateItemBtn();
+  }};
+  if (tillable(tx, ty)) return { label: 'Till', fn: () => { c.soil = true; c.wet = weather === 'rain'; flags.tilled = true; sfx.till(); burst(tx * TS + 8, ty * TS + 10, 6, 1, 40, 60, SOI); } };
+  return null;
+}
+function plant(c) {
+  if (!inSeason(sel)) { say(CROPDEF[sel].name + ' will not grow in ' + SEASONS[seasonOf(day)], 3); sfx.nope(); return; }
+  c.crop = { type: sel, stage: 0 }; inv[sel]--; flags.planted = true;
+  sfx.plant();
+  if (!inv[sel]) { const n = CROPS.find(k => inv[k] > 0); if (n) sel = n; }
+  updateItemBtn();
+}
+function water(c, tx, ty) {
+  if (can <= 0) { say('Your can is empty. Refill at the pond'); sfx.nope(); return; }
+  can--; c.wet = true; flags.watered = true; sfx.water();
+  for (let i = 0; i < 7; i++) parts.push({ x: tx * TS + 3 + Math.random() * 10, y: ty * TS - 2, vx: 0, vy: 30 + Math.random() * 30, life: .35, col: 2, grav: 80, pal: WAT });
+}
+function harvest(c, tx, ty) {
+  const d = CROPDEF[c.crop.type];
+  inv.basket[c.crop.type]++; flags.harvested = true;
+  texts.push({ s: '+1 ' + d.name, x: tx * TS + 8, y: ty * TS - 6, life: 1 });
+  if (d.regrow) c.crop.stage = d.days - d.regrow; else c.crop = null;
+  sfx.harvest();
+}
+function refill() {
+  if (can >= canMax) { say('Your can is already full'); return; }
+  can = canMax; sfx.refill(); say('Can refilled');
+}
+function sell() {
+  let n = 0, total = 0, kept = 0;
+  for (const k of GOODSK) {
+    const keep = Math.min(inv.basket[k], reserved(k)), s = inv.basket[k] - keep;
+    kept += keep; n += s; total += s * GOODS[k].sell; inv.basket[k] = keep;
+  }
+  if (!n) { say(kept ? 'Your basket is saved for orders' : 'Harvest crops first, then sell here'); sfx.nope(); return; }
+  coins += total; dayStats.earned += total; flags.sold = true;
+  texts.push({ s: '+$' + total, x: 5 * TS + 8, y: 2 * TS - 4, life: 1.3 });
+  if (kept) say('Kept ' + kept + ' for your orders');
+  sfx.sell();
+}
+function trySleep() {
+  if (sleepArm > 0) { endDay(false); return; }
+  sleepArm = 2.5; say('Tap Sleep again to end the day', 2.5);
+}
+function openMenu(kind) { state = kind; menuIdx = 0; menuMsg = null; shopTop = 0; if (kind === 'shop') buildShop(); sfx.tick(); }
+const shedCap = () => built.barn ? 3 : 2;
+function cook() {
+  const k = PRODK[menuIdx], d = PROD[k];
+  if (shed.length >= shedCap()) { menuMsg = 'The shed is full. It empties at dawn'; sfx.nope(); return; }
+  if (inv.basket[d.from] < d.n) { menuMsg = 'Needs ' + d.n + ' ' + GOODS[d.from].short + ' in your basket'; sfx.nope(); return; }
+  inv.basket[d.from] -= d.n; shed.push(k); flags.cooked = true;
+  menuMsg = d.name + ' will be ready at dawn'; sfx.buy();
+}
+function buy() {
+  const it = SHOP[menuIdx];
+  if (it.rep && rep < it.rep) { menuMsg = 'Needs ' + it.rep + (it.rep === 1 ? ' reputation star' : ' reputation stars'); sfx.nope(); return; }
+  if (it.upg && owned[it.k]) { menuMsg = 'You already own it'; sfx.nope(); return; }
+  if (it.seed && !inSeason(it.k)) { menuMsg = 'Out of season, but you can store the seeds'; }
+  if (coins < it.price) { menuMsg = 'Not enough coins'; sfx.nope(); return; }
+  coins -= it.price;
+  if (it.mach) flags.mach = true;
+  if (it.build) {
+    built[it.k] = true;
+    applyBuilt();
+    menuMsg = it.name + ' done!';
+    if (it.k === 'mill') flags.restored = true;
+    sfx.order(); buildShop();
+    menuIdx = Math.min(menuIdx, SHOP.length - 1);
+    return;
+  }
+  if (it.upg) {
+    owned[it.k] = true;
+    if (it.k === 'can') { canMax = 20; can = 20; }
+    buildShop();
+    menuIdx = Math.min(menuIdx, SHOP.length - 1);
+  } else inv[it.k]++;
+  menuMsg = 'Bought ' + it.name.toLowerCase(); sfx.buy();
+  if (ITEMS.includes(it.k) && !inv[sel]) sel = it.k;
+  updateItemBtn();
+}
+function takeOrder() {
+  const o = offers[menuIdx];
+  if (!o) return;
+  if (orders.length >= maxOrders()) { menuMsg = 'You can hold ' + maxOrders() + ' orders at a time'; sfx.nope(); return; }
+  orders.push(o); offers.splice(menuIdx, 1);
+  menuIdx = Math.max(0, Math.min(menuIdx, offers.length - 1));
+  menuMsg = 'Order taken! Deliver at the box'; sfx.buy();
+}
+function cycleItem() {
+  const have = ITEMS.filter(k => inv[k] > 0);
+  if (!have.length) { updateItemBtn(); return; }
+  const i = have.indexOf(sel);
+  sel = have[(i + 1) % have.length];
+  sfx.tick(); updateItemBtn();
+}
+function shoo() {
+  if (player.cd > 0) return;
+  player.cd = .45; player.flail = .35;
+  const ox = player.x, oy = player.y - 4, R = 64;
+  rings.push({ x: ox, y: oy, r: 2, life: R / 200 + .08 });
+  burst(ox, player.y - 12, 6, 2, 50, 40, SCP);
+  sfx.shoo();
+  let n = 0;
+  for (const cr of crows) {
+    if (cr.st === 'flee') continue;
+    const dx = cr.x - ox, dy = (cr.y - oy) / .75;
+    if (dx * dx + dy * dy > R * R) continue;
+    burst(cr.x, cr.y - cr.alt - 3, 5, 1, 50, 15, CRW);
+    flee(cr, ox, oy); n++;
+  }
+  if (n) { sfx.flee(); flags.shooed = true; }
+}
+
+/* ================= day end ================= */
+function endDay(fell) {
+  state = 'night'; cardT = 0;
+  for (const cr of crows) if (cr.st !== 'flee') flee(cr, player.x, player.y);
+  let grown = 0, dry = 0;
+  for (const row of farm) for (const c of row) if (c.crop) { if (c.wet) grown++; else dry++; }
+  const L = [];
+  if (fell) L.push('You nodded off in the field.');
+  L.push(dayStats.earned ? 'Earned $' + dayStats.earned + ' today' : 'No coins earned today');
+  if (grown) L.push(grown + (grown === 1 ? ' watered crop will grow' : ' watered crops will grow'));
+  if (dry) L.push(dry + (dry === 1 ? ' dry crop will wait' : ' dry crops will wait'));
+  const missed = orders.filter(o => o.due <= day);
+  for (const o of missed) L.push('Missed the ' + o.client + ' order');
+  if (missed.length) { orders = orders.filter(o => o.due > day); rep = Math.max(0, rep - missed.length); L.push(missed.length > 1 ? 'You lost reputation stars' : 'You lost a reputation star'); }
+  for (const o of orders) if (o.due === day + 1) L.push(o.client + ' order is due tomorrow');
+  let mach = 0, idle = 0;
+  for (const row of farm) for (const c of row) if (MACH[c.obj] && c.obj !== 'chime') { mach++; if (c.obj === 'drill' && (!c.seed || !inv[c.seed])) idle++; }
+  if (mach) L.push(mach + (mach === 1 ? ' machine will run at dawn' : ' machines will run at dawn'));
+  if (idle) L.push(idle + (idle === 1 ? ' drill has no seed' : ' drills have no seed'));
+  if (weather === 'frost' && !built.green) L.push('The frost will set your crops back');
+  if (shed.length) L.push('The shed is making ' + shed.map(k => PROD[k].short).join(' and '));
+  L.push('Tomorrow: ' + WEATHER[weatherNext].name.toLowerCase());
+  if (seasonDay(day) === 12) L.push(SEASONS[seasonOf(day)] + ' is over. ' + SEASONS[(seasonOf(day) + 1) % 4] + ' begins');
+  cardTitle = SEASONS[seasonOf(day)] + ' day ' + seasonDay(day) + ' ends';
+  if (flags.restored && !flags.ending) {
+    flags.ending = true;
+    cardTitle = 'The farm is restored';
+    cardLines = ['The windmill turns over a farm', 'you rebuilt from a bare field.', '',
+      'Day ' + day + '   $' + coins + '   ' + rep + ' stars', '', 'Keep farming as long as you like.'];
+    sfx.night(); return;
+  }
+  cardLines = L;
+  sfx.night();
+}
+function overnight() {
+  const frost = weather === 'frost' && !built.green;
+  for (const row of farm) for (const c of row) {
+    if (c.crop && c.wet) c.crop.stage = Math.min(CROPDEF[c.crop.type].days, c.crop.stage + 1);
+    if (frost && c.crop && c.crop.stage < CROPDEF[c.crop.type].days) c.crop.stage = Math.max(0, c.crop.stage - 1);
+    c.wet = false;
+  }
+}
+function continueCard() {
+  if (cardT < .7) return;
+  overnight(); day++; startDay(false);
+}
+
+/* ================= crows ================= */
+function guards() {
+  const a = [];
+  for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) if (farm[y][x].obj === 'chime') a.push([x * TS + 8, y * TS + 12]);
+  return a;
+}
+function protectedAt(x, y, ch) {
+  if (Math.hypot(x - player.x, y - player.y) < 56) return true;
+  for (const [cx, cy] of ch) if (Math.hypot(x - cx, y - cy) < 48) return true;
+  return false;
+}
+function pickTarget() {
+  const ch = guards(), opts = [];
+  for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) {
+    if (!farm[y][x].crop) continue;
+    const px = x * TS + 8, py = y * TS + 13;
+    if (!protectedAt(px, py, ch)) opts.push({ x, y, px, py });
+  }
+  return opts.length ? pickR(opts) : null;
+}
+function spawnCrow() {
+  const tg = pickTarget(); if (!tg) return;
+  const side = Math.random() * 3 | 0; let x, y;
+  if (side === 0) { x = tg.px + (Math.random() - .5) * 200; y = tg.py - 160; }
+  else if (side === 1) { x = tg.px + 180; y = tg.py + (Math.random() - .5) * 200; }
+  else { x = tg.px + (Math.random() - .5) * 200; y = tg.py + 180; }
+  crows.push({ x, y, st: 'in', tg, alt: 20, vx: 0, vy: 0, face: 1, bite: 0, anim: Math.random() * 9, check: 0, life: 3 });
+  flags.crowSeen = true;
+}
+function flee(cr, fx, fy) {
+  let dx = cr.x - fx, dy = cr.y - fy, d = Math.hypot(dx, dy);
+  if (d < 2) { dx = Math.random() - .5; dy = -1; d = Math.hypot(dx, dy); }
+  cr.st = 'flee'; cr.life = 3; cr.vx = dx / d * 110; cr.vy = dy / d * 110 - 25; cr.face = cr.vx > 0 ? 1 : 0;
+}
+function updateCrows(dt) {
+  const ch = guards();
+  for (const cr of crows) {
+    cr.anim += dt;
+    if (cr.st === 'in') {
+      const c = farm[cr.tg.y][cr.tg.x];
+      cr.check -= dt;
+      if (!c.crop) { flee(cr, cr.x, cr.y + 20); continue; }
+      if (cr.check <= 0) { cr.check = .3; if (protectedAt(cr.tg.px, cr.tg.py, ch)) { flee(cr, player.x, player.y); continue; } }
+      const dx = cr.tg.px - cr.x, dy = cr.tg.py - cr.y, d = Math.hypot(dx, dy), sp = 36;
+      if (d <= sp * dt + .5) { cr.x = cr.tg.px; cr.y = cr.tg.py; cr.st = 'eat'; cr.bite = 2.6; cr.alt = 0; if (onScreen(cr.x, cr.y)) sfx.caw(); }
+      else { cr.x += dx / d * sp * dt; cr.y += dy / d * sp * dt; if (Math.abs(dx) > .5) cr.face = dx > 0 ? 1 : 0; cr.alt = Math.min(20, d * .35); }
+    } else if (cr.st === 'eat') {
+      const c = farm[cr.tg.y][cr.tg.x];
+      if (!c.crop) { flee(cr, cr.x, cr.y + 20); continue; }
+      if (protectedAt(cr.x, cr.y, ch)) { flee(cr, player.x, player.y); continue; }
+      cr.bite -= dt;
+      if (cr.bite <= 0) {
+        if (onScreen(cr.x, cr.y)) sfx.peck();
+        burst(cr.x, cr.y - 4, 5, 2, 30, 40, SOI);
+        if (c.crop.stage <= 0) { c.crop = null; texts.push({ s: 'Seed eaten!', x: cr.x, y: cr.y - 16, life: 1.1 }); }
+        else { c.crop.stage--; texts.push({ s: 'Pecked!', x: cr.x, y: cr.y - 16, life: 1.1 }); }
+        flee(cr, cr.x, cr.y + 20);
+      }
+    } else {
+      cr.x += cr.vx * dt; cr.y += cr.vy * dt; cr.alt = Math.min(40, cr.alt + dt * 40); cr.life -= dt;
+    }
+  }
+  crows = crows.filter(c => !(c.st === 'flee' && c.life <= 0));
+}
+function burst(x, y, n, col, spread = 40, grav = 20, pal) {
+  for (let i = 0; i < n; i++) parts.push({ x, y, vx: (Math.random() - .5) * spread, vy: (Math.random() - .8) * spread, life: .45 + Math.random() * .45, col, grav, pal });
+}
+
+/* ================= layout / camera ================= */
+const HUD_H = 12;
+const hudTop = () => satTop;
+const trackerH = () => orders.length && state !== 'title' ? orders.length * 8 + 3 : 0;
+const playTop = () => hudTop() + HUD_H + trackerH();
+const playBot = () => VH - ctrlH;
+function camTarget() {
+  const pt = playTop(), pb = playBot();
+  let tx = player.x - VW / 2, ty = player.y - 8 - (pt + pb) / 2;
+  tx = WW <= VW ? (WW - VW) / 2 : Math.max(0, Math.min(WW - VW, tx));
+  const minY = -pt + 2, maxY = WH - pb;
+  ty = maxY < minY ? (minY + maxY) / 2 : Math.max(minY, Math.min(maxY, ty));
+  return [tx, ty];
+}
+function snapCam() { const [x, y] = camTarget(); cam.x = x; cam.y = y; }
+const onScreen = (x, y) => x > cam.x - 10 && x < cam.x + VW + 10 && y > cam.y - 20 && y < cam.y + VH + 10;
+
+/* ================= update ================= */
+const keys = {};
+let jx = 0, jy = 0;
+function solidTile(x, y) {
+  if (x < 0 || y < 0 || x >= WC || y >= WR) return true;
+  if (isBorder(x, y) || STATIC[x + ',' + y]) return true;
+  const o = farm[y][x].obj;
+  return o === 'rock' || !!MACH[o];
+}
+function blocked(px, py) {
+  for (const [ox, oy] of [[-4, -4], [4, -4], [-4, 0], [4, 0]]) {
+    const [tx, ty] = pxTile(px + ox, py + oy);
+    if (solidTile(tx, ty)) return true;
+  }
+  return false;
+}
+function menuNav(dt, count) {
+  navT -= dt;
+  let ny = jy; if (keys.arrowup || keys.w) ny = -1; if (keys.arrowdown || keys.s) ny = 1;
+  if (Math.abs(ny) > .6 && navT <= 0 && count > 0) { menuIdx = (menuIdx + (ny > 0 ? 1 : -1) + count) % count; navT = .22; menuMsg = null; sfx.tick(); }
+  if (Math.abs(ny) <= .6) navT = 0;
+}
+const REPEATABLE = { Till: 1, Water: 1, Plant: 1, Harvest: 1, Clear: 1, Break: 1 };
+const SCALE = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
+function musicTick(dt) {
+  if (!music || !ac || state === 'title') return;
+  musT -= dt;
+  if (musT > 0) return;
+  const night = state === 'night' || clockMin() > endMin() - 60;
+  const n = SCALE[(musI * 2 + (Math.random() * 3 | 0)) % SCALE.length] * (night ? .5 : 1);
+  tone(n, night ? 1.7 : 1.1, 'triangle', .02);
+  if (musI % 3 === 0) tone(130.81 * (musI % 6 === 0 ? 1 : 1.5), 2.4, 'sine', .016);
+  musI++;
+  musT = night ? 2.3 : 1.5 + Math.random() * .9;
+}
+function update(dt) {
+  clock += dt;
+  musicTick(dt);
+  for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt; p.vx *= .96; p.life -= dt; }
+  parts = parts.filter(p => p.life > 0);
+  for (const x of texts) { x.y -= 14 * dt; x.life -= dt; }
+  texts = texts.filter(x => x.life > 0);
+  for (const r of rings) { r.r += 200 * dt; r.life -= dt; }
+  rings = rings.filter(r => r.life > 0);
+  if (msg) { msg.t -= dt; if (msg.t <= 0) msg = null; }
+
+  if (state === 'title') {
+    cam.x = Math.max(0, Math.min(WW - VW, 200 - VW / 2 + Math.sin(clock * .2) * 60));
+    cam.y = Math.max(-30, Math.min(WH - VH, 60 + Math.sin(clock * .13) * 40));
+    return;
+  }
+  if (state === 'night') { cardT += dt; updateCrows(dt); return; }
+  if (state === 'shop') { menuNav(dt, SHOP.length); return; }
+  if (state === 'board') { menuNav(dt, offers.length); return; }
+  if (state === 'shed') { menuNav(dt, PRODK.length); return; }
+  if (state !== 'day') return;
+
+  let mx = jx, my = jy;
+  if (keys.arrowleft || keys.a) mx -= 1;
+  if (keys.arrowright || keys.d) mx += 1;
+  if (keys.arrowup || keys.w) my -= 1;
+  if (keys.arrowdown || keys.s) my += 1;
+  const m = Math.hypot(mx, my);
+  if (m > 1) { mx /= m; my /= m; }
+  player.moving = m > .1;
+  if (player.moving) {
+    if (Math.abs(mx) > Math.abs(my)) { player.fx = mx > 0 ? 1 : -1; player.fy = 0; }
+    else { player.fx = 0; player.fy = my > 0 ? 1 : -1; }
+    const sp = (owned.boots ? 94 : 72) * dt;
+    const nx = player.x + mx * sp; if (!blocked(nx, player.y)) player.x = nx;
+    const ny = player.y + my * sp; if (!blocked(player.x, ny)) player.y = ny;
+    player.step += dt;
+    if (Math.random() < dt * 5) parts.push({ x: player.x + (Math.random() * 6 - 3), y: player.y, vx: 0, vy: -4, life: .3, col: 3, grav: 0, pal: SOI });
+  }
+  player.bob = player.moving ? -Math.round(Math.abs(Math.sin(player.step * 11)) * 3) : 0;
+  player.cd = Math.max(0, player.cd - dt);
+  player.flail = Math.max(0, player.flail - dt);
+  player.act = Math.max(0, player.act - dt);
+  sleepArm = Math.max(0, sleepArm - dt);
+  if (holdUse && player.act <= 0) {
+    const a = getAction();
+    if (a && REPEATABLE[a.label]) { player.act = .17; a.fn(); }
+  }
+
+  const [ctx, cty] = camTarget(), k = Math.min(1, dt * 8);
+  cam.x += (ctx - cam.x) * k; cam.y += (cty - cam.y) * k;
+
+  t += dt;
+  updateCrows(dt);
+  if (!noonDone && clockMin() >= 780) {
+    noonDone = true;
+    const extra = [];
+    if (weather === 'drought') {
+      let n = 0;
+      for (const row of farm) for (const c of row) if (c.wet) { c.wet = false; n++; }
+      if (n) extra.push('the sun baked ' + n + ' tiles dry');
+    }
+    if (built.barn) { const l = runMachines(); if (l.length) extra.push(...l); }
+    if (extra.length) say('Noon: ' + extra.join(', '), 4);
+  }
+
+  const cm = clockMin();
+  if (weather !== 'rain' && weather !== 'wind' && !built.mill && cm > 480 && cm < endMin() - 90) {
+    spawnT -= dt;
+    let planted = 0; for (const row of farm) for (const c of row) if (c.crop) planted++;
+    const cap = Math.min(7, 1 + Math.floor(planted / 6));
+    if (spawnT <= 0) {
+      if (planted && crows.filter(c => c.st !== 'flee').length < cap) spawnCrow();
+      spawnT = Math.max(2.5, 9 - planted * .1) * (.6 + Math.random() * .8);
+    }
+  }
+  if (weather === 'rain') for (let i = 0; i < 2; i++) if (Math.random() < dt * 40) parts.push({ x: cam.x + Math.random() * (VW + 60), y: cam.y - 4, vx: -30, vy: 240, life: 2, col: 2, grav: 0, rain: true, pal: WAT });
+  if (t >= dayLen()) endDay(true);
+}
+
+/* ================= draw ================= */
+function shadow(x, y, w) {
+  const [tx, ty] = pxTile(x, y);
+  const row = farm[ty], onSoil = !!(row && row[tx] && row[tx].soil);
+  g.fillStyle = onSoil ? SOI[0] : GR[1];
+  g.fillRect(Math.round(x - w / 2), Math.round(y), w, 1);
+  g.fillRect(Math.round(x - w / 2) + 1, Math.round(y) + 1, w - 2, 1);
+}
+function drawPlayer() {
+  const jit = player.flail > 0 ? (Math.round(clock * 40) % 2 ? 1 : -1) : 0;
+  shadow(player.x, player.y - 1, player.bob < -1 ? 5 : 7);
+  const s = player.flail > 0 ? SC_F : player.fy < 0 ? SC_BACK : SC;
+  g.drawImage(s, Math.round(player.x - 6 + jit), Math.round(player.y - 17 + player.bob));
+}
+function drawCursor() {
+  const [tx, ty] = targetTile();
+  if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) return;
+  const a = getAction(), x = tx * TS, y = ty * TS, L = 4;
+  g.fillStyle = a ? ACC : P[2];
+  const pulse = Math.floor(clock * 3) % 2 ? 0 : 1;
+  const x0 = x - pulse, y0 = y - pulse, x1 = x + TS - 1 + pulse, y1 = y + TS - 1 + pulse;
+  g.fillRect(x0, y0, L, 1); g.fillRect(x0, y0, 1, L);
+  g.fillRect(x1 - L + 1, y0, L, 1); g.fillRect(x1, y0, 1, L);
+  g.fillRect(x0, y1, L, 1); g.fillRect(x0, y1 - L + 1, 1, L);
+  g.fillRect(x1 - L + 1, y1, L, 1); g.fillRect(x1, y1 - L + 1, 1, L);
+}
+function pixelRing(x, y, r, col) {
+  g.fillStyle = col;
+  const n = Math.max(16, r * 3 | 0);
+  for (let i = 0; i < n; i++) {
+    if (i % 3 === 2) continue;
+    const a = i / n * Math.PI * 2;
+    g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * .75), 1, 1);
+  }
+}
+function drawWorld() {
+  const cx = Math.round(cam.x), cy = Math.round(cam.y);
+  g.fillStyle = P[1]; g.fillRect(0, 0, VW, VH);
+  g.save(); g.translate(-cx, -cy);
+  g.drawImage(bg, 0, 0);
+  if (cx < POND.x + POND.w + 8 && cx + VW > POND.x - 8) {
+    g.fillStyle = WAT[2];
+    for (let i = 0; i < 5; i++) {
+      const sy = POND.y + 8 + i * 8, sw = 5 + (i % 3) * 3;
+      const sx = POND.x + 10 + Math.round(Math.sin(clock * .8 + i * 1.7) * 9) + (i % 2) * 8;
+      g.fillRect(sx, sy, sw, 1);
+    }
+  }
+  const x0 = Math.max(0, Math.floor(cx / TS) - 1), x1 = Math.min(WC - 1, Math.floor((cx + VW) / TS) + 1);
+  const y0 = Math.max(0, Math.floor(cy / TS) - 1), y1 = Math.min(WR - 1, Math.floor((cy + VH) / TS) + 2);
+  const list = [];
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const c = farm[y][x], px = x * TS, py = y * TS;
+    if (c.soil) drawSoil(x, y, px, py, c.wet);
+    if (c.crop) {
+      const sp = cropSprite(c.crop), bx = px + 8 - (sp.width >> 1), by = py + 14 - sp.height;
+      const ripe = c.crop.stage >= CROPDEF[c.crop.type].days;
+      list.push({ y: py + 13, d: () => {
+        if (c.crop.stage >= 2) { g.fillStyle = SOI[0]; for (let i = -2; i <= 2; i++) if ((i + x) % 2 === 0) g.fillRect(px + 8 + i, py + 13, 1, 1); }
+        g.drawImage(sp, bx, by);
+        if (ripe && ((clock * 1.3 + x * .7 + y * 1.1) % 3) < .35) {
+          const sx = bx + sp.width, sy = by - 1;
+          g.fillStyle = P[0]; g.fillRect(sx - 1, sy - 2, 3, 5); g.fillRect(sx - 2, sy - 1, 5, 3);
+          g.fillStyle = ACC; g.fillRect(sx, sy - 1, 1, 3); g.fillRect(sx - 1, sy, 3, 1);
+        }
+      }});
+    }
+    if (c.obj === 'weed') g.drawImage(S.weed, px + 4, py + 9);
+    if (c.obj === 'rock') list.push({ y: py + 14, d: () => g.drawImage(c.hp < 2 ? S.rockCracked : S.rock, px + 2, py + 6) });
+    if (c.obj === 'chime') list.push({ y: py + 14, d: () => {
+      shadow(px + 8, py + 14, 6);
+      g.drawImage(S.chime, px + 3, py + 2);
+      const sw = Math.round(Math.sin(clock * 3 + x) * 1);
+      g.fillStyle = MET[3]; g.fillRect(px + 3 + sw, py + 5, 2, 2); g.fillRect(px + 11 - sw, py + 5, 2, 2);
+    }});
+    if (c.obj === 'sprinkler') list.push({ y: py + 14, d: () => {
+      g.drawImage(S.sprinkler, px + 4, py + 7);
+      if (state === 'day' && clockMin() < 450 && Math.random() < .3) parts.push({ x: px + 8, y: py + 7, vx: (Math.random() - .5) * 60, vy: -30 - Math.random() * 20, life: .5, col: 2, grav: 120, pal: WAT });
+    }});
+    if (c.obj === 'drill') list.push({ y: py + 14, d: () => {
+      shadow(px + 8, py + 15, 8);
+      g.drawImage(S.drill, px + 2, py + 2);
+      if (c.seed) {
+        g.fillStyle = WD[0]; g.fillRect(px + 4, py - 6, 8, 6);
+        g.fillStyle = P[3]; g.fillRect(px + 5, py - 5, 6, 4);
+        g.drawImage(CROPDEF[c.seed].ripeS, px + 5, py - 5, 6, 4);
+      } else if (Math.floor(clock * 2) % 2) txtO('?', px + 6, py - 6, 3, 1, 'l', 0);
+    }});
+    if (c.obj === 'picker') list.push({ y: py + 14, d: () => {
+      shadow(px + 8, py + 15, 9);
+      const wob = state === 'day' ? Math.round(Math.sin(clock * 2 + x) * 1) : 0;
+      g.drawImage(S.picker, px + 2 + wob, py + 3);
+    }});
+    if (c.obj === 'tower') list.push({ y: py + 14, d: () => {
+      shadow(px + 8, py + 15, 10);
+      g.drawImage(S.tower, px + 2, py + 1);
+      if (state === 'day' && clockMin() < 460 && Math.random() < .5)
+        parts.push({ x: px + 8, y: py + 4, vx: (Math.random() - .5) * 120, vy: -40 - Math.random() * 30, life: .8, col: 2, grav: 130, pal: WAT });
+    }});
+    if (c.obj === 'cart') list.push({ y: py + 14, d: () => {
+      shadow(px + 8, py + 15, 10);
+      g.drawImage(S.cart, px + 2, py + 4);
+    }});
+  }
+  for (const cr of crows) if (cr.st === 'eat') list.push({ y: cr.y + .1, d: () => {
+    const peck = Math.floor(cr.anim * 3) % 2;
+    g.drawImage(S.crow[cr.face], Math.round(cr.x - 5), Math.round(cr.y - 7 + peck));
+  }});
+  if (state !== 'title') list.push({ y: player.y, d: drawPlayer });
+  list.sort((a, b) => a.y - b.y).forEach(e => e.d());
+  if (state === 'day') drawCursor();
+  const flying = crows.filter(c => c.st !== 'eat');
+  for (const cr of flying) shadow(cr.x, cr.y - 1, 5);
+  for (const cr of flying) {
+    const fr = Math.floor(cr.anim * (cr.st === 'flee' ? 14 : 9)) % 2 ? S.f1 : S.f2;
+    g.drawImage(fr[cr.face], Math.round(cr.x - 5), Math.round(cr.y - cr.alt - 6));
+  }
+  for (const r of rings) { pixelRing(r.x, r.y, r.r, P[0]); pixelRing(r.x, r.y, r.r - 2, ACC); }
+  for (const p of parts) { g.fillStyle = (p.pal || P)[p.col]; g.fillRect(Math.round(p.x), Math.round(p.y), 1, p.rain ? 3 : 1); }
+  for (const x of texts) { if (x.s[0] === '+' && x.s[1] === '$') { const o = P[3]; P[3] = ACC; txtO(x.s, x.x, x.y, 3, 1, 'c', 0); P[3] = o; } else txtO(x.s, x.x, x.y, 3, 1, 'c', 0); }
+  g.restore();
+  // windmill sails
+  if (built.mill) {
+    const hx = 6 * TS + 8 - cx, hy = 7 * TS - 14 - cy;
+    for (let a = 0; a < 4; a++) {
+      const ang = clock * 1.1 + a * Math.PI / 2;
+      const nx = -Math.sin(ang), ny = Math.cos(ang);
+      for (let d2 = 3; d2 <= 16; d2++) {
+        const px2 = hx + Math.cos(ang) * d2, py2 = hy + Math.sin(ang) * d2;
+        g.fillStyle = WD[0];
+        g.fillRect(Math.round(px2), Math.round(py2), 1, 1);
+        if (d2 > 5 && d2 % 2 === 0) {
+          g.fillStyle = P[3];
+          g.fillRect(Math.round(px2 + nx * 2), Math.round(py2 + ny * 2), 1, 1);
+          g.fillRect(Math.round(px2 + nx), Math.round(py2 + ny), 1, 1);
+        }
+      }
+    }
+    g.fillStyle = MET[0]; g.fillRect(hx - 1, hy - 1, 3, 3);
+    g.fillStyle = MET[3]; g.fillRect(hx, hy, 1, 1);
+  }
+  // edge markers for ripe crops off-screen
+  if (state === 'day') {
+    let shown = 0;
+    for (let y = 0; y < WR && shown < 5; y++) for (let x = 0; x < WC && shown < 5; x++) {
+      const c = farm[y][x];
+      if (!c.crop || c.crop.stage < CROPDEF[c.crop.type].days) continue;
+      const wx = x * TS + 8, wy = y * TS + 8;
+      if (onScreen(wx, wy)) continue;
+      shown++;
+      const ax = Math.round(Math.max(3, Math.min(VW - 8, wx - cx))), ay = Math.round(Math.max(playTop() + 2, Math.min(playBot() - 8, wy - cy)));
+      g.fillStyle = P[0]; g.fillRect(ax - 1, ay - 1, 6, 6);
+      g.fillStyle = ACC; g.fillRect(ax + 1, ay, 2, 4); g.fillRect(ax, ay + 1, 4, 2);
+    }
+  }
+  // edge markers for crows eating off-screen
+  if (state === 'day') for (const cr of crows) {
+    if (cr.st !== 'eat' || onScreen(cr.x, cr.y)) continue;
+    const ax = Math.round(Math.max(4, Math.min(VW - 9, cr.x - cx))), ay = Math.round(Math.max(playTop() + 3, Math.min(playBot() - 9, cr.y - cy)));
+    if (Math.floor(clock * 4) % 2) {
+      g.fillStyle = P[0]; g.fillRect(ax - 1, ay - 1, 7, 7);
+      g.fillStyle = P[3]; g.fillRect(ax, ay, 5, 5);
+      g.fillStyle = P[0]; g.fillRect(ax + 2, ay + 1, 1, 2); g.fillRect(ax + 2, ay + 4, 1, 1);
+    }
+  }
+}
+function wIcon(kind, x, y) {
+  const R = (c, a, b, w, h) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };
+  if (kind === 'sun' || kind === 'drought') {
+    R(ACC, 2, 1, 3, 3); R(ACC, 1, 2, 5, 1); R(ACC, 3, 0, 1, 5); R(ACC, 0, 0, 1, 1); R(ACC, 6, 0, 1, 1); R(ACC, 0, 4, 1, 1); R(ACC, 6, 4, 1, 1);
+    if (kind === 'drought') { R(SOI[3], 0, 6, 3, 1); R(SOI[3], 4, 6, 3, 1); }
+  }
+  if (kind === 'rain' || kind === 'wind' || kind === 'frost') {
+    if (kind !== 'frost') { R(P[2], 1, 0, 5, 2); R(P[2], 0, 2, 7, 2); }
+    if (kind === 'rain') { R(WAT[2], 1, 5, 1, 2); R(WAT[2], 3, 5, 1, 2); R(WAT[2], 5, 5, 1, 2); }
+    if (kind === 'wind') { R(P[3], 0, 5, 5, 1); R(P[3], 2, 7, 4, 1); }
+    if (kind === 'frost') { R(WAT[3], 3, 0, 1, 7); R(WAT[3], 0, 3, 7, 1); R(WAT[3], 1, 1, 1, 1); R(WAT[3], 5, 1, 1, 1); R(WAT[3], 1, 5, 1, 1); R(WAT[3], 5, 5, 1, 1); }
+  }
+}
+function noteIcon(x, y, on) {
+  const c = on ? ACC : P[1];
+  g.fillStyle = c;
+  g.fillRect(x + 3, y, 1, 5); g.fillRect(x + 4, y, 2, 1); g.fillRect(x + 1, y + 4, 3, 2);
+  if (!on) { g.fillStyle = P[2]; for (let i = 0; i < 7; i++) g.fillRect(x + i - 1, y + i - 1, 1, 1); }
+}
+function icon(kind, x, y) {
+  const R = (c, a, b, w, h) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };
+  if (kind === 'coin') { R(ACC, 1, 0, 4, 6); R(ACC, 0, 1, 6, 4); R('#f6e2a0', 2, 1, 2, 4); }
+  if (kind === 'drop') { R(WAT[2], 2, 0, 1, 1); R(WAT[2], 1, 1, 3, 2); R(WAT[2], 0, 3, 5, 2); R(WAT[2], 1, 5, 3, 1); R(WAT[3], 1, 3, 1, 1); }
+  if (kind === 'basket') { R(WD[3], 0, 2, 7, 1); R(WD[2], 1, 3, 5, 3); R(WD[3], 1, 0, 1, 2); R(WD[3], 5, 0, 1, 2); R(WD[3], 2, 0, 3, 1); }
+  if (kind === 'star' || kind === 'starOff') {
+    const c = kind === 'star' ? ACC : P[1];
+    R(c, 2, 0, 1, 1); R(c, 0, 1, 5, 2); R(c, 1, 3, 3, 1); R(c, 0, 4, 1, 1); R(c, 4, 4, 1, 1);
+  }
+}
+function drawHUD() {
+  const y = hudTop();
+  g.fillStyle = P[0]; g.fillRect(0, 0, VW, y + HUD_H);
+  const ty = y + 3;
+  const label = SEASONS[seasonOf(day)] + ' ' + seasonDay(day);
+  txt(label, 3, ty, 3);
+  txt(state === 'night' ? 'night' : clockStr(), 3 + textW(label) + 5, ty, 2);
+  let x = 6 + textW(label) + textW(clockStr()) + 8;
+  wIcon(weather, x, ty); x += 10;
+  const div = px => { g.fillStyle = P[1]; g.fillRect(px, y + 2, 1, 7); };
+  icon('coin', x, ty); txt(coins, x + 8, ty, 3); x += 8 + textW(String(coins)) + 5;
+  div(x); x += 4;
+  const cw = VW < 200 ? String(can) : can + '/' + canMax;
+  icon('drop', x, ty); txt(cw, x + 7, ty, can ? 3 : 2); x += 7 + textW(cw) + 5;
+  div(x); x += 4;
+  icon('basket', x, ty); txt(basketCount(), x + 9, ty, 3);
+  noteIcon(VW - 42, ty, music);
+  for (let i = 0; i < 5; i++) icon(i < rep ? 'star' : 'starOff', VW - 32 + i * 6, ty);
+  if (state === 'day') {
+    const frac = Math.max(0, 1 - t / dayLen()), bw = Math.round(VW * frac);
+    g.fillStyle = P[1]; g.fillRect(0, y + HUD_H - 2, VW, 2);
+    g.fillStyle = ACC; g.fillRect(0, y + HUD_H - 2, bw, 1);
+    g.fillStyle = '#f6e2a0'; g.fillRect(Math.max(0, bw - 2), y + HUD_H - 2, 2, 2);
+  } else { g.fillStyle = P[1]; g.fillRect(0, y + HUD_H - 1, VW, 1); }
+  if (orders.length) {
+    const th = trackerH();
+    g.fillStyle = P[1]; g.fillRect(0, y + HUD_H, VW, th);
+    g.fillStyle = P[0];
+    for (let i = 0; i < VW; i += 2) g.fillRect(i, y + HUD_H + th - 1, 1, 1);
+    orders.forEach((o, i) => {
+      const left = o.due - day;
+      const bits = Object.entries(o.items).map(([k, v]) => v.got + '/' + v.need + ' ' + GOODS[k].short);
+      const name = o.client.split(' ')[0].replace("'s", '');
+      txt(name + ' ' + bits.join(' '), 3, y + HUD_H + 2 + i * 8, 3);
+      txt(left <= 0 ? 'today' : left + 'd', VW - 3, y + HUD_H + 2 + i * 8, left <= 1 ? 3 : 2, 1, 'r');
+    });
+  }
+}
+function hintText() {
+  if (!flags.tilled) return 'Hop to the field and tap Till';
+  if (!flags.planted) return 'Tap Plant to sow a seed';
+  if (!flags.watered) return 'Now tap Water';
+  if (!flags.board) return 'Restaurants post orders on the notice board';
+  if (flags.crowSeen && !flags.shooed) return 'Crows avoid you. Tap Shoo!';
+  if (flags.harvested && !flags.sold && !flags.delivered) return 'Sell at the bin or deliver orders at the box';
+  if (day === 1 && clockMin() > 1020) return 'Sleep in your shack to end the day';
+  if (built.shed && !flags.cooked) return 'Cook crops at the shed for far more money';
+  if (seasonOf(day) === 3 && !built.green) return 'Nothing grows in winter. Build, or buy a greenhouse';
+  if (rep >= 1 && !flags.mach && !SHOP.some(i => i.mach && inv[i.k] > 0)) return 'The crate now sells machines that work for you';
+  return null;
+}
+function panel(w, h) {
+  const pt = playTop(), pb = playBot();
+  const x = Math.round((VW - w) / 2), y = Math.round(Math.max(pt + 4, (pt + pb - h) / 2));
+  box(x, y, w, h);
+  return [x, y];
+}
+function drawCard() {
+  const w = Math.min(VW - 12, 220), maxc = Math.floor((w - 8) / 4);
+  const lines = cardLines.flatMap(s => wrap(s, maxc));
+  const h = 24 + lines.length * 9 + 14;
+  const [x, y] = panel(w, h);
+  txtC(cardTitle, x + w / 2, y + 6, ACC, 1, 'c');
+  g.fillStyle = P[1]; g.fillRect(x + 10, y + 15, w - 20, 1);
+  lines.forEach((s, i) => txt(s, x + w / 2, y + 21 + i * 9, 2, 1, 'c'));
+  if (cardT > .7 && Math.floor(clock * 2) % 2 === 0) txt('Tap next', x + w / 2, y + h - 9, 3, 1, 'c');
+}
+let menuRows = [];
+function drawShop() {
+  const w = Math.min(VW - 12, 214), rowH = 10;
+  const avail = playBot() - playTop() - 12;
+  const vis = Math.max(4, Math.min(SHOP.length, Math.floor((avail - 58) / rowH)));
+  const h = 22 + vis * rowH + 36;
+  if (menuIdx < shopTop) shopTop = menuIdx;
+  if (menuIdx >= shopTop + vis) shopTop = menuIdx - vis + 1;
+  shopTop = Math.max(0, Math.min(SHOP.length - vis, shopTop));
+  const [x, y] = panel(w, h);
+  txtC('Seed crate', x + 6, y + 5, ACC);
+  icon('coin', x + w - 14 - textW(String(coins)), y + 5); txt(coins, x + w - 6, y + 5, 3, 1, 'r');
+  menuRows = [];
+  for (let i = shopTop; i < shopTop + vis; i++) {
+    const it = SHOP[i], on = i === menuIdx, ry = y + 18 + (i - shopTop) * rowH;
+    menuRows.push([x, ry - 2, w, rowH, i]);
+    const locked = it.rep && rep < it.rep, ownedIt = it.upg && owned[it.k];
+    if (on) { g.fillStyle = ACC; g.fillRect(x + 2, ry - 2, w - 4, rowH - 1); }
+    txt(it.name, x + 6, ry, on ? 0 : locked ? 1 : 3);
+    const right = ownedIt ? 'owned' : locked ? it.rep + (it.rep === 1 ? ' star' : ' stars') : '$' + it.price;
+    txt(right, x + w - 6, ry, on ? 0 : (locked || coins < it.price) ? 1 : 3, 1, 'r');
+  }
+  if (shopTop > 0) txt('-', x + w - 4, y + 15, 2, 1, 'r');
+  if (shopTop + vis < SHOP.length) txt('-', x + w - 4, y + 18 + vis * rowH - 4, 2, 1, 'r');
+  const it = SHOP[menuIdx], by = y + 20 + vis * rowH;
+  g.fillStyle = P[1]; g.fillRect(x + 6, by, w - 12, 1);
+  wrap(menuMsg || it.info, Math.floor((w - 12) / 4)).slice(0, 2).forEach((l, i) => txt(l, x + w / 2, by + 4 + i * 8, menuMsg ? 3 : 2, 1, 'c'));
+  const have = ITEMS.includes(it.k) ? 'You have ' + inv[it.k] + '   ' : '';
+  txt(have + 'Shoo: close', x + w / 2, y + h - 9, 2, 1, 'c');
+}
+function drawShed() {
+  const w = Math.min(VW - 12, 214), rowH = 10, h = 22 + PRODK.length * rowH + 34;
+  const [x, y] = panel(w, h);
+  txtC('Processing shed', x + 6, y + 5, ACC);
+  txt(shed.length + '/' + shedCap(), x + w - 6, y + 5, 2, 1, 'r');
+  menuRows = [];
+  PRODK.forEach((k, i) => {
+    const d = PROD[k], on = i === menuIdx, ry = y + 18 + i * rowH, have = inv.basket[d.from] >= d.n;
+    menuRows.push([x, ry - 2, w, rowH, i]);
+    if (on) { g.fillStyle = ACC; g.fillRect(x + 2, ry - 2, w - 4, rowH - 1); }
+    txt(d.name, x + 6, ry, on ? 0 : have ? 3 : 1);
+    txt(d.n + ' ' + GOODS[d.from].short + '   $' + d.sell, x + w - 6, ry, on ? 0 : have ? 3 : 1, 1, 'r');
+  });
+  const d = PROD[PRODK[menuIdx]], by = y + 20 + PRODK.length * rowH;
+  g.fillStyle = P[1]; g.fillRect(x + 6, by, w - 12, 1);
+  const line = menuMsg || ('You have ' + inv.basket[d.from] + ' ' + GOODS[d.from].short +
+    '. Worth $' + d.n * GOODS[d.from].sell + ' raw');
+  wrap(line, Math.floor((w - 12) / 4)).slice(0, 2).forEach((l, i) => txt(l, x + w / 2, by + 4 + i * 8, menuMsg ? 3 : 2, 1, 'c'));
+  txt('Ready at dawn   Shoo: close', x + w / 2, y + h - 9, 2, 1, 'c');
+}
+function drawBoard() {
+  const w = Math.min(VW - 12, 220), rowH = 28, n = Math.max(1, offers.length), h = 22 + n * rowH + 26;
+  const [x, y] = panel(w, h);
+  txtC('Notice board', x + 6, y + 5, ACC);
+  txt('Orders ' + orders.length + '/' + maxOrders(), x + w - 6, y + 5, 2, 1, 'r');
+  menuRows = [];
+  if (!offers.length) txt('No new orders today', x + w / 2, y + 24, 2, 1, 'c');
+  offers.forEach((o, i) => {
+    const ry = y + 18 + i * rowH, on = i === menuIdx;
+    menuRows.push([x, ry - 2, w, rowH, i]);
+    if (on) { g.fillStyle = ACC; g.fillRect(x + 2, ry - 2, w - 4, rowH - 2); }
+    const c1 = on ? 0 : 3, c2 = on ? 1 : 2;
+    txt(o.client, x + 6, ry, c1);
+    txt('$' + o.reward, x + w - 6, ry, c1, 1, 'r');
+    txt(orderLine(o), x + 6, ry + 8, c2);
+    txt('Due in ' + (o.due - day) + ' days', x + 6, ry + 16, c2);
+  });
+  const by = y + 20 + n * rowH;
+  g.fillStyle = P[1]; g.fillRect(x + 6, by - 2, w - 12, 1);
+  txt(menuMsg || 'Pays better than the bin', x + w / 2, by + 3, menuMsg ? 3 : 2, 1, 'c');
+  txt('Use: take   Shoo: close', x + w / 2, y + h - 9, 2, 1, 'c');
+}
+function drawTitle() {
+  g.drawImage(D12, 0, 0);
+  const w = Math.min(VW - 24, 176), h = 84;
+  const pt = hudTop(), pb = playBot();
+  const x = Math.round((VW - w) / 2), y = Math.round(pt + (pb - pt) * .26);
+  box(x, y, w, h);
+  const cxm = x + w / 2;
+  // a crow on the frame
+  const hop = (clock % 3) < .25 ? -1 : 0;
+  g.drawImage(S.crow[1], Math.round(x + w - 22), Math.round(y - 9 + hop));
+  // wheat sprigs either side of the title
+  const sprig = (sx, dir) => {
+    g.fillStyle = ACC;
+    for (let i = 0; i < 7; i++) g.fillRect(sx, y + 12 + i, 1, 1);
+    for (let i = 0; i < 3; i++) { g.fillRect(sx + dir, y + 13 + i * 2, 1, 1); g.fillRect(sx - dir, y + 14 + i * 2, 1, 1); }
+  };
+  sprig(x + 12, 1); sprig(x + w - 13, -1);
+  txtC('Scarecrow', cxm, y + 10, ACC, 2, 'c');
+  txtC('Farm', cxm, y + 24, ACC, 2, 'c');
+  rule(x + 14, y + 38, w - 28, 1);
+  const blink = Math.floor(clock * 2) % 2 === 0;
+  if (hasSave) {
+    txt('Use: continue', cxm, y + 46, blink ? 3 : 2, 1, 'c');
+    txt('Shoo: new farm', cxm, y + 57, 2, 1, 'c');
+  } else {
+    txt('Tap start', cxm, y + 48, blink ? 3 : 2, 1, 'c');
+    txt('to open the farm', cxm, y + 59, 2, 1, 'c');
+  }
+  rule(x + 14, y + 70, w - 28, 1);
+  txt('Grow  sell  shoo', cxm, y + 75, 1, 1, 'c');
+}
+function render() {
+  g.imageSmoothingEnabled = false;
+  drawWorld();
+  if (state === 'title') { drawTitle(); return; }
+  const cm2 = clockMin(), e2 = endMin();
+  let dark = cm2 > e2 - 45 ? 2 : cm2 > e2 - 165 ? 1 : 0;
+  if (weather === 'rain' || weather === 'frost') dark = Math.max(dark, 1);
+  if (dark === 1) g.drawImage(D12, 0, 0);
+  else if (dark === 2) g.drawImage(D25, 0, 0);
+  if (state === 'night') { g.drawImage(D50, 0, 0); drawHUD(); drawCard(); return; }
+  if (state === 'shop') { g.drawImage(D50, 0, 0); drawHUD(); drawShop(); return; }
+  if (state === 'board') { g.drawImage(D50, 0, 0); drawHUD(); drawBoard(); return; }
+  if (state === 'shed') { g.drawImage(D50, 0, 0); drawHUD(); drawShed(); return; }
+  drawHUD();
+  const s = msg ? msg.s : hintText();
+  if (s) {
+    const lines = wrap(s, Math.floor((VW - 20) / 4));
+    const w = Math.max(...lines.map(l => textW(l))) + 10, h = lines.length * 8 + 5;
+    const y = playTop() + 4;
+    box(VW / 2 - w / 2, y, w, h);
+    lines.forEach((l, i) => txt(l, VW / 2, y + 3 + i * 8, msg ? 3 : 2, 1, 'c'));
+  }
+}
+
+/* ================= input ================= */
+const useBtn = document.getElementById('use'), shooBtn = document.getElementById('shoo'), itemBtn = document.getElementById('item');
+let lastUse = '';
+function updateUseBtn() {
+  let label = 'Use', idle = false;
+  if (state === 'day') { const a = getAction(); label = a ? a.label : 'Use'; idle = !a; }
+  else if (state === 'shop') label = 'Buy';
+  else if (state === 'board') label = 'Take';
+  else if (state === 'shed') label = 'Cook';
+  else if (state === 'night') label = 'Next';
+  else if (state === 'title') label = hasSave ? 'Go on' : 'Start';
+  const key = label + idle;
+  if (key !== lastUse) { useBtn.textContent = label; useBtn.classList.toggle('idle', idle); lastUse = key; }
+}
+function updateItemBtn() {
+  if (!inv) return;
+  const n = inv[sel] || 0;
+  const name = itemName(sel);
+  itemBtn.querySelector('span').textContent = n > 0 ? name + ' ' + n : 'Nothing';
+}
+function primary() {
+  au();
+  if (state === 'title') { if (hasSave) loadGame(); else newGame(); }
+  else if (state === 'night') continueCard();
+  else if (state === 'shop') buy();
+  else if (state === 'board') takeOrder();
+  else if (state === 'shed') cook();
+  else if (state === 'day') {
+    if (player.act > 0) return;
+    const a = getAction();
+    if (a) { player.act = .15; a.fn(); }
+  }
+}
+function secondary() {
+  au();
+  if (state === 'title') newGame();
+  else if (state === 'shop' || state === 'board' || state === 'shed') { state = 'day'; sfx.tick(); }
+  else if (state === 'day') shoo();
+  else if (state === 'night') continueCard();
+}
+function third() { au(); if (state === 'day' || state === 'shop') cycleItem(); }
+function toggleMusic() { music = !music; au(); say(music ? 'Music on' : 'Music off', 1.6); if (music) { musT = 0; musicTick(0); } }
+
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase(); keys[k] = true;
+  if (k.startsWith('arrow') || k === ' ') e.preventDefault();
+  if (e.repeat) return;
+  if (k === ' ' || k === 'enter' || k === 'j') { primary(); if (state === 'day') holdUse = true; }
+  if (k === 'm') toggleMusic();
+  if (k === 'k' || k === 'shift' || k === 'escape') secondary();
+  if (k === 'q' || k === 'e' || k === 'tab') { e.preventDefault(); third(); }
+});
+addEventListener('keyup', e => {
+  const k = e.key.toLowerCase(); keys[k] = false;
+  if (k === ' ' || k === 'enter' || k === 'j') holdUse = false;
+});
+addEventListener('blur', () => { for (const k in keys) keys[k] = false; holdUse = false; });
+
+const stick = document.getElementById('stick'), knob = document.getElementById('knob');
+let sid = null;
+function mv(e) {
+  const r = stick.getBoundingClientRect();
+  let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+  const m = r.width / 2 * .55, d = Math.hypot(dx, dy);
+  if (d > m) { dx *= m / d; dy *= m / d; }
+  jx = dx / m; jy = dy / m;
+  if (Math.hypot(jx, jy) < .18) { jx = 0; jy = 0; }
+  knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+}
+stick.addEventListener('pointerdown', e => { sid = e.pointerId; stick.setPointerCapture(sid); au(); mv(e); });
+stick.addEventListener('pointermove', e => { if (e.pointerId === sid) mv(e); });
+const release = e => { if (e.pointerId === sid) { sid = null; jx = jy = 0; knob.style.transform = 'translate(-50%,-50%)'; } };
+stick.addEventListener('pointerup', release);
+stick.addEventListener('pointercancel', release);
+
+function wireBtn(b, fn, hold) {
+  b.addEventListener('pointerdown', e => { e.preventDefault(); b.classList.add('on'); fn(); if (hold && state === 'day') holdUse = true; });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => { b.classList.remove('on'); if (hold) holdUse = false; }));
+  b.addEventListener('click', e => { if (e.detail === 0) fn(); });
+}
+wireBtn(useBtn, primary, true);
+wireBtn(shooBtn, secondary);
+wireBtn(itemBtn, third);
+cv.addEventListener('pointerdown', e => {
+  au();
+  const x = e.clientX / scale, y = e.clientY / scale;
+  if (state === 'shop' || state === 'board' || state === 'shed') {
+    const hit = menuRows.find(([rx, ry, rw, rh]) => x >= rx && x < rx + rw && y >= ry && y < ry + rh);
+    if (hit) { if (hit[4] === menuIdx) primary(); else { menuIdx = hit[4]; menuMsg = null; sfx.tick(); } }
+  } else if (y < hudTop() + HUD_H + 2 && x > VW - 46 && x < VW - 33 && state !== 'title') toggleMusic();
+  else if (state === 'title' || state === 'night') primary();
+});
+document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+/* ================= resize & loop ================= */
+const pad = document.getElementById('pad'), sat = document.getElementById('sat');
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  scale = Math.max(2, Math.round(Math.min(w, h) / 200));
+  VW = Math.ceil(w / scale); VH = Math.ceil(h / scale);
+  cv.width = VW; cv.height = VH;
+  cv.style.width = VW * scale + 'px'; cv.style.height = VH * scale + 'px';
+  g.imageSmoothingEnabled = false;
+  D50 = makeDither(3); D25 = makeDither(2); D12 = makeDither(1);
+  const pr = pad.getBoundingClientRect();
+  ctrlH = Math.max(0, Math.ceil((h - pr.top) / scale) - 8);
+  satTop = Math.ceil(sat.getBoundingClientRect().height / scale);
+  if (state === 'day') snapCam();
+}
+addEventListener('resize', resize);
+resize();
+blankFarm();
+refreshBg();
+buildShop();
+checkSave();
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  update(dt); render(); updateUseBtn();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
