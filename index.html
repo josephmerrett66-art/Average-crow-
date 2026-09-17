@@ -106,6 +106,51 @@ function flip(c) {
   const x = f.getContext('2d'); x.translate(c.width, 0); x.scale(-1, 1); x.drawImage(c, 0, 0);
   return f;
 }
+// Original farm materials, with substantial stone plinths and distinct silhouettes.
+function towerSprite(kind) {
+  const c = document.createElement('canvas'); c.width = 26; c.height = 42;
+  const b = c.getContext('2d');
+  const R = (pal, n, x, y, w, h) => { b.fillStyle = pal[n]; b.fillRect(x,y,w,h); };
+  R(RCK,0,2,36,22,6); R(RCK,2,3,36,20,4); R(RCK,3,3,36,20,1);
+  R(RCK,1,5,23,16,13); R(RCK,0,5,23,1,13); R(RCK,0,20,23,1,13);
+  for(let y=25;y<36;y+=4) {
+    R(RCK,0,6,y,14,1);
+    for(let x=7+(y%8 ? 0 : 3);x<20;x+=6) R(RCK,0,x,y-3,1,3);
+    R(RCK,2,6,y-2,3,1);
+  }
+  R(WD,0,3,19,20,5); R(WD,2,4,20,18,3); R(WD,3,4,20,18,1);
+  R(WD,0,6,10,3,10); R(WD,2,7,11,1,9);
+  R(WD,0,18,10,3,10); R(WD,3,19,11,1,9);
+  R(WD,0,2,16,22,4); R(WD,2,3,17,20,2); R(WD,3,3,17,20,1);
+  // Riveted corner caps and a hanging pennant.
+  for(const x of [3,21]) { R(MET,0,x,16,2,4); R(MET,3,x,17,1,1); }
+  const accent = kind==='bomber' ? BOMB : kind==='chimespin' ? WAT : kind==='hawk' ? BFLY1 : SCP;
+  R(accent,0,10,25,6,8); R(accent,2,11,26,4,5); R(accent,3,12,26,1,4); R(accent,2,12,31,2,2);
+  if(kind==='scarepost') {
+    R(SCP,0,10,5,7,8); R(SCP,2,11,6,5,6); R(SCP,0,11,8,1,1); R(SCP,0,15,8,1,1);
+    R(SCP,0,7,4,12,2); R(SCP,2,10,1,7,3); R(SCP,3,11,1,5,1);
+    R(WD,0,6,12,15,2); R(SCP,1,10,12,7,4); R(SCP,3,12,13,1,3);
+  } else if(kind==='chimespin') {
+    R(MET,0,11,2,4,14); R(MET,2,12,3,2,12);
+    R(MET,0,5,4,16,3); R(MET,3,6,4,14,1);
+    for(const x of [5,10,16]) { R(MET,0,x,7,4,7); R(WAT,2,x+1,8,2,4); R(MET,3,x+1,8,1,3); R(MET,0,x-1,13,6,2); }
+  } else if(kind==='archer') {
+    R(WD,0,11,5,4,11); R(WD,3,12,6,1,9);
+    for(let i=0;i<5;i++) { R(WD,0,3+i,3+i,2,2); R(WD,0,21-i,3+i,2,2); R(WD,3,4+i,3+i,1,1); }
+    R(MET,0,5,8,17,2); R(MET,3,6,8,15,1); R(MET,2,12,1,1,13); R(MET,3,11,1,3,2);
+  } else if(kind==='bomber') {
+    R(MET,0,7,6,13,11); R(MET,1,8,7,11,9); R(MET,2,8,7,3,8);
+    R(MET,0,8,3,14,6); R(MET,2,9,3,12,2); R(MET,0,11,4,8,3); R(BOMB,2,12,5,6,1);
+    for(const x of [3,20]) { R(BOMB,0,x,13,4,4); R(BOMB,2,x+1,14,2,2); }
+  } else {
+    // A copper-roofed falconry tower, with broad golden wings above the nest.
+    for(let i=0;i<6;i++) { R(WD,0,12-i,2+i,3+i*2,1); R(BOMB,2,13-i,2+i,1+i*2,1); }
+    R(WD,0,4,8,19,2); R(BOMB,3,5,8,17,1);
+    R(SCP,0,11,10,6,6); R(SCP,2,12,11,4,3); R(SCP,3,15,10,2,2);
+    R(SCP,0,5,11,7,2); R(SCP,0,16,11,6,2); R(SCP,2,6,11,5,1); R(SCP,2,17,11,4,1);
+  }
+  return c;
+}
 const pair = (rows, pal) => { const r = spr(rows, pal); return [flip(r), r]; };
 
 const SC = spr([
@@ -319,49 +364,11 @@ const S = {
   bfly1b: spr(["..2.2..","..222..","...0...","..333..","..3.3.."], BFLY1),
   bfly2a: spr(["22...22",".22.22.","..000..",".33.33.","33...33"], BFLY2),
   bfly2b: spr(["..2.2..","..222..","...0...","..333..","..3.3.."], BFLY2),
-  scarepost: spr([
-    "..000..",
-    ".02220.",
-    "0222220",
-    ".02220.",
-    "0.020.0",
-    "..020..",
-    ".00000."], WD),
-  chimespin: spr([
-    "...00...",
-    "..0220..",
-    ".022220.",
-    "02222220",
-    ".022220.",
-    "..0220..",
-    "...00...",
-    "....0...",
-    "...000.."], MET),
-  archer: spr([
-    "0.....0",
-    "02...20",
-    ".0.0.0.",
-    "..020..",
-    "..020..",
-    "..020..",
-    ".00000."], WD),
-  bomber: spr([
-    "..0000..",
-    ".033330.",
-    "03222230",
-    "03333330",
-    "03222230",
-    ".033330.",
-    "..0000..",
-    ".000000."], BOMB),
-  hawk: spr([
-    "..0.0..",
-    ".022220.",
-    "0222200",
-    "..0330..",
-    "..0.0...",
-    ".00000..",
-    "..000..."], WD),
+  scarepost: towerSprite('scarepost'),
+  chimespin: towerSprite('chimespin'),
+  archer: towerSprite('archer'),
+  bomber: towerSprite('bomber'),
+  hawk: towerSprite('hawk'),
 
 };
 
@@ -925,22 +932,18 @@ for (const k of ANIMALK) {
     info: 'Houses up to ' + a.cap + ' ' + (a.cap > 1 ? a.animalPlural : a.animalName.toLowerCase()) + '. Feed it so they produce' };
 }
 /* ================= crow raid towers =================
-   Placed and picked up exactly like any other machine (reuses all of that
-   plumbing via MACH). Each also quietly extends the ordinary crow-guard
-   radius year-round, so building up a defense line is never wasted outside
-   of the one winter raid night. Combat numbers (dmg/rate/hp) are tuned by
-   an offline simulation harness, not by feel — see the balance notes. */
+   One-tile foundations, tall silhouettes, and distinct projectile attacks. */
 const TOWERS = {
-  scarepost: { name: 'Scarecrow Post',   short: 'Post',    price: 60,  rep: 0, range: 40, dmg: 1, rate: 1.4,
-    info: 'Cheap and always on. Weak, but keeps crows off nearby crops year-round' },
-  chimespin: { name: 'Chime Spinner',    short: 'Spinner', price: 150, rep: 1, range: 48, dmg: 1, rate: .32,
-    info: 'Fires fast at the nearest crow. Built for thinning out a swarm' },
-  archer:    { name: 'Slingshot Archer', short: 'Archer',  price: 260, rep: 2, range: 70, dmg: 2, rate: .85, lead: true,
-    info: 'Long range. Always strikes whichever crow is closest to your field' },
-  bomber:    { name: 'Pumpkin Bomber',   short: 'Bomber',  price: 420, rep: 3, range: 65, dmg: 2, rate: 1.8, splash: 22,
-    info: 'Slow, but the blast hits every crow clustered together' },
-  hawk:      { name: 'Hawk Perch',       short: 'Hawk',    price: 650, rep: 4, range: 55, dmg: 3, rate: 2.2, cone: 4,
-    info: 'A hawk strikes several crows at once, but only up close' }
+  scarepost: { name: 'Scarecrow Watchtower', short: 'Watchtower', price: 60, rep: 0, range: 65, dmg: 1, rate: .85,
+    info: 'A timber watchtower. Fires golden seed bolts at approaching crows' },
+  chimespin: { name: 'Storm Chime Tower', short: 'Storm chime', price: 150, rep: 1, range: 72, dmg: 1, rate: .65, chain: 3,
+    info: 'Electric chimes arc between three nearby crows' },
+  archer: { name: 'Ballista Tower', short: 'Ballista', price: 260, rep: 2, range: 105, dmg: 1, rate: .55, lead: true,
+    info: 'Long-range bolts pierce a line of crows. Targets the closest threat to home' },
+  bomber: { name: 'Pumpkin Mortar', short: 'Mortar', price: 420, rep: 3, range: 100, dmg: 1, rate: 1.65, splash: 32,
+    info: 'Lobs explosive pumpkins into flocks. Wide blasts clear clustered crows' },
+  hawk: { name: 'Falcon Keep', short: 'Falcon keep', price: 650, rep: 4, range: 95, dmg: 1, rate: 1.4, cone: 6,
+    info: 'Launches a flight of six golden hawks to hunt separate targets' }
 };
 const TOWERK = Object.keys(TOWERS);
 const TOWER_SET = new Set(TOWERK);
@@ -1102,8 +1105,8 @@ function refreshBg() {
   critters = spawnCritters(flowerSpots);
   defCritters = spawnCritters(defFlowerSpots);
 }
-function startDay(first) {
-  state = 'day'; t = 0; crows = []; parts = []; texts = []; rings = []; noonDone = false; raid = null;
+function startDay(first, restoring = false) {
+  state = 'day'; t = 0; crows = []; parts = []; texts = []; rings = []; noonDone = false; raid = null; raidShots = []; raidEffects = [];
   weather = first ? (weather || 'sun') : weatherNext;
   weatherNext = pickWeather(day + 1);
   if (seasonOf(day) !== bgSeason) refreshBg();
@@ -1137,6 +1140,7 @@ function startDay(first) {
     inv.turnip += 4; sel = 'turnip'; msg = { s: 'Some turnip seeds blew in overnight', t: 3.5 };
   }
   snapCam();
+  if (!restoring) ensureMorningRaid();
   if (!first) save();
   updateItemBtn();
   sfx.morning();
@@ -1365,7 +1369,7 @@ function storageOK() {
 function save() {
   try {
     if (!storageOK()) return;
-    const data = { onDefMap, day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals,
+    const data = { onDefMap, day, t, raid, raidShots, raidCrows: crows.filter(c => c.raid), coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals,
       farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0, c.fed ? 1 : 0])),
       defGrid: defGrid.map(row => row.map(c => c.obj || 0)) };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1406,7 +1410,18 @@ function loadGame() {
     if (!inv.basket) inv.basket = {};
     for (const k of GOODSK) if (typeof inv.basket[k] !== 'number') inv.basket[k] = 0;
     applyBuilt();
-    startDay(true);
+    startDay(true, true);
+    t = Math.max(0, Math.min(dayLen(), d.t || 0));
+    if (d.raid && d.raid.day === day) {
+      raid = d.raid;
+      if (raid.phase !== 'done') {
+        crows = Array.isArray(d.raidCrows) ? d.raidCrows : [];
+        raidShots = Array.isArray(d.raidShots) ? d.raidShots : [];
+        if (!onDefMap) travelToHomestead();
+        msg = { s: 'The homestead battle continues. Defend your cottage!', t: 4 };
+      }
+    }
+    ensureMorningRaid();
     if (migratedTowers) msg = { s: migratedTowers + ' tower' + (migratedTowers === 1 ? '' : 's') + ' moved to your inventory — the homestead has its own map now. Walk the path to place them.', t: 6 };
   } catch (e) { newGame(); }
 }
@@ -1565,6 +1580,7 @@ function sell() {
   sfx.sell();
 }
 function trySleep() {
+  ensureMorningRaid();
   if (raid && raid.phase !== 'done') { say('Not with crows still coming!', 2.2); sfx.nope(); return; }
   if (sleepArm > 0) { endDay(false); return; }
   sleepArm = 2.5; say('Tap Sleep again to end the day', 2.5);
@@ -1646,6 +1662,8 @@ function shoo() {
 
 /* ================= day end ================= */
 function endDay(fell) {
+  ensureMorningRaid();
+  if (raid && raid.phase !== 'done') { say('Defend the cottage before resting!', 2.5); return; }
   state = 'night'; cardT = 0;
   for (const cr of crows) if (cr.st !== 'flee') flee(cr, player.x, player.y);
   let grown = 0, dry = 0;
@@ -1666,7 +1684,7 @@ function endDay(fell) {
   if (weather === 'frost' && !built.green) L.push('The frost will set your crops back');
   if (shed.length) L.push('The shed is making ' + shed.map(k => PROD[k].short).join(' and '));
   L.push('Tomorrow: ' + WEATHER[weatherNext].name.toLowerCase());
-  if (isRaidDay(day + 1)) L.push('CROWS ARE COMING tomorrow night. Build your defenses!');
+  if (isRaidDay(day + 1)) L.push('CROWS ARE COMING tomorrow morning. Build your defenses!');
   if (seasonDay(day) === 12) L.push(SEASONS[seasonOf(day)] + ' is over. ' + SEASONS[(seasonOf(day) + 1) % 4] + ' begins');
   cardTitle = SEASONS[seasonOf(day)] + ' day ' + seasonDay(day) + ' ends';
   if (flags.restored && !flags.ending) {
@@ -1807,7 +1825,7 @@ function burst(x, y, n, col, spread = 40, grav = 20, pal) {
   for (let i = 0; i < n; i++) parts.push({ x, y, vx: (Math.random() - .5) * spread, vy: (Math.random() - .8) * spread, life: .45 + Math.random() * .45, col, grav, pal });
 }
 
-/* ================= defense night =================
+/* ================= daytime defense =================
    Once each winter, four waves approach the homestead from every side.
    Defenses protect the cottage; each crow that reaches it damages its HP.
    The raid continues on either map, so leaving cannot pause the attack. */
@@ -1816,10 +1834,10 @@ const isRaidDay = d => seasonOf(d) === RAID_SEASON && seasonDay(d) === RAID_DAY;
 const raidYear = d => Math.floor((d - 1) / RAID_YEAR_DAYS);
 function raidWaveSizes(year) {
   const mult = 1 + year * .45;
-  return [8, 12, 16, 22].map(n => Math.max(1, Math.round(n * mult)));
+  return [30, 48, 72, 100].map(n => Math.max(1, Math.round(n * mult)));
 }
-let raid = null;
-const HOUSE_MAX_HP = 160, HOUSE_DMG_PER_LEAK = 4;
+let raid = null, raidShots = [], raidEffects = [];
+const HOUSE_MAX_HP = 160, HOUSE_DMG_PER_LEAK = 1;
 const DEF_GATE_TX = Math.floor(DEF_WC / 2), DEF_GATE_TY = DEF_WR - 1;
 function travelToHomestead() {
   onDefMap = true;
@@ -1903,11 +1921,19 @@ function updateDefenseMap(dt) {
   defCam.x += (ctx - defCam.x) * k; defCam.y += (cty - defCam.y) * k;
   if (t >= dayLen() && !(raid && raid.phase !== 'done')) endDay(true);
 }
+function ensureMorningRaid() {
+  if (isRaidDay(day) && flags.raidResolvedDay !== day && !raid) {
+    t = 0; // Even legacy raid-day saves begin their unfinished battle in the morning.
+    startRaid();
+    if (!onDefMap) travelToHomestead();
+  }
+}
 function startRaid() {
   const sizes = raidWaveSizes(raidYear(day));
-  raid = { wave: 0, sizes, phase: 'between', betweenT: 3, toSpawn: 0, spawnT: 0,
+  raidShots = []; raidEffects = [];
+  raid = { day, nextCrowId: 1, wave: 0, sizes, phase: 'between', betweenT: 15, toSpawn: 0, spawnT: 0,
     hp: HOUSE_MAX_HP, maxHp: HOUSE_MAX_HP, stats: { killed: 0, leaked: 0, spawned: 0 } };
-  msg = { s: 'Crows on the horizon! ' + sizes.length + ' waves incoming. Defend the house!', t: 3.6 };
+  msg = { s: 'Morning raid! 15 seconds to prepare. Four flocks are heading for the cottage!', t: 3.6 };
   sfx.caw();
 }
 function raidDefeat() {
@@ -1915,7 +1941,10 @@ function raidDefeat() {
   msg = { s: 'The crows overran the house. ' + raid.stats.killed + ' downed, but it wasn\'t enough.', t: 5 };
   sfx.caw();
   raid.phase = 'done';
+  flags.raidResolvedDay = day;
+  raidShots = [];
   crows = crows.filter(c => !c.raid);
+  save();
 }
 function finishRaid() {
   const s = raid.stats;
@@ -1927,6 +1956,9 @@ function finishRaid() {
   msg = { s: line, t: 5.5 };
   sfx.caw();
   raid.phase = 'done';
+  flags.raidResolvedDay = day;
+  raidShots = [];
+  save();
 }
 function raidTargetPoint() {
   const tx = HOUSE_CX + (Math.random() - .5) * (HOUSE_TW * TS - 8);
@@ -1935,13 +1967,13 @@ function raidTargetPoint() {
 }
 function spawnRaidCrow() {
   const [tx, ty] = raidTargetPoint();
-  const side = Math.random() * 4 | 0;
+  const side = (raid.wave + Math.floor(raid.stats.spawned / 9)) % 4;
   let x, y;
   if (side === 0) { x = tx + (Math.random() - .5) * 260; y = -20; }
   else if (side === 1) { x = DEF_WW + 20; y = ty + (Math.random() - .5) * 260; }
   else if (side === 2) { x = tx + (Math.random() - .5) * 260; y = DEF_WH + 20; }
   else { x = -20; y = ty + (Math.random() - .5) * 260; }
-  crows.push({ x, y, tx, ty, st: 'raidfly', raid: true, hp: 2, maxHp: 2, alt: 30,
+  crows.push({ id: raid.nextCrowId++, x, y, tx, ty, st: 'raidfly', raid: true, hp: 1, maxHp: 1, alt: 18 + Math.random() * 10, speed: 29 + Math.random() * 9,
     face: x < tx ? 1 : 0, anim: Math.random() * 9, vx: 0, vy: 0, life: 0 });
   raid.stats.spawned++;
 }
@@ -1954,13 +1986,17 @@ function updateRaid(dt) {
   }
   if (raid.phase === 'spawning') {
     raid.spawnT -= dt;
-    if (raid.spawnT <= 0 && raid.toSpawn > 0) { spawnRaidCrow(); raid.toSpawn--; raid.spawnT = .3 + Math.random() * .25; }
+    if (raid.spawnT <= 0 && raid.toSpawn > 0) {
+      for (let i = 0, n = Math.min(3, raid.toSpawn); i < n; i++) { spawnRaidCrow(); raid.toSpawn--; }
+      raid.spawnT = .22;
+    }
     if (raid.toSpawn <= 0) raid.phase = 'clearing';
     return;
   }
-  if (raid.phase === 'clearing' && !crows.some(c => c.raid)) {
+  if (raid.phase === 'clearing' && !crows.some(c => c.raid) && !raidShots.length) {
     if (raid.wave >= raid.sizes.length - 1) finishRaid();
-    else { raid.wave++; raid.phase = 'between'; raid.betweenT = 3.5; }
+    else { raid.wave++; raid.phase = 'between'; raid.betweenT = 6;
+      msg = { s: 'Wave ' + (raid.wave + 1) + ': ' + raid.sizes[raid.wave] + ' crows incoming!', t: 2.5 }; save(); }
   }
 }
 function updateRaidCrows(dt) {
@@ -1968,16 +2004,16 @@ function updateRaidCrows(dt) {
   for (const cr of crows) {
     if (!cr.raid || cr.dead) continue;
     cr.anim += dt;
-    const dx = cr.tx - cr.x, dy = cr.ty - cr.y, d = Math.hypot(dx, dy), sp = 46;
+    const dx = cr.tx - cr.x, dy = cr.ty - cr.y, d = Math.hypot(dx, dy), sp = cr.speed || 34;
     if (d <= sp * dt + .5) {
       raid.stats.leaked++;
       raid.hp = Math.max(0, raid.hp - HOUSE_DMG_PER_LEAK);
-      burst(cr.x, cr.y - 4, 4, 2, 30, 40, SOI);
+      raidEffects.push({kind:'peck', x:cr.x, y:cr.y, life:.3, maxLife:.3});
       cr.dead = true;
     } else {
       cr.x += dx / d * sp * dt; cr.y += dy / d * sp * dt;
       if (Math.abs(dx) > .5) cr.face = dx > 0 ? 1 : 0;
-      cr.alt = Math.max(4, cr.alt - dt * 6);
+      cr.alt = Math.max(4, Math.min(24, d * .11)) + Math.sin(cr.anim * 4) * .5;
     }
   }
   crows = crows.filter(c => !c.dead);
@@ -1987,56 +2023,142 @@ function hitRaidCrow(cr, dmg) {
   if (cr.dead) return;
   cr.hp -= dmg;
   cr.hit = .15;
-  if (cr.hp <= 0) { cr.dead = true; raid.stats.killed++; burst(cr.x, cr.y, 6, 0, 50, 60, CRW); }
+  if (cr.hp <= 0) { cr.dead = true; raid.stats.killed++; raidEffects.push({kind:'feathers', x:cr.x, y:cr.y-cr.alt-4, life:.45, maxLife:.45}); }
+}
+function launchTowerShot(kind, x, y, target) {
+  const distance = Math.hypot(target.x-x, target.y-y);
+  raidShots.push({kind, sx:x, sy:y-23, tx:target.x, ty:target.y-target.alt-4,
+    targetId:target.id, age:0, duration:kind==='bomber' ? .8 : kind==='hawk' ? .55 : Math.max(.16,distance/240)});
 }
 function updateTowers(dt) {
-  for (let y = 0; y < DEF_WR; y++) for (let x = 0; x < DEF_WC; x++) {
-    const c = defGrid[y][x];
-    if (TOWER_SET.has(c.obj) && c.fireFx > 0) c.fireFx -= dt;
+  for (const row of defGrid) for (const c of row) {
+    c.fireFx = Math.max(0,(c.fireFx || 0)-dt);
+    c.cool = Math.max(0,(c.cool || 0)-dt);
   }
   if (!raid || raid.phase === 'done' || raid.phase === 'between') return;
-  const targets = crows.filter(c => c.raid);
-  if (!targets.length) return;
-  for (let y = 0; y < DEF_WR; y++) for (let x = 0; x < DEF_WC; x++) {
-    const c = defGrid[y][x];
-    if (!TOWER_SET.has(c.obj)) continue;
-    c.cool = (c.cool || 0) - dt;
-    if (c.cool > 0) continue;
-    const t = TOWERS[c.obj];
-    const px = x * TS + 8, py = y * TS + 8;
-    const inRange = targets.filter(cr => !cr.dead && Math.hypot(cr.x - px, cr.y - py) <= t.range);
-    if (!inRange.length) continue;
-    c.cool = t.rate;
-    c.fireFx = .2; c.fireAng = inRange.length ? Math.atan2(inRange[0].y - py, inRange[0].x - px) : 0;
-    if (t.splash) {
-      let best = inRange[0], bestCount = 0;
-      for (const cand of inRange) {
-        const n = inRange.filter(o => !o.dead && Math.hypot(o.x - cand.x, o.y - cand.y) <= t.splash).length;
-        if (n > bestCount) { bestCount = n; best = cand; }
+  const targets = crows.filter(c => c.raid && !c.dead);
+  const reserved = new Set(raidShots.map(p=>p.targetId));
+  for (let y=0;y<DEF_WR;y++) for(let x=0;x<DEF_WC;x++) {
+    const c=defGrid[y][x];
+    if(!TOWER_SET.has(c.obj) || c.cool>0) continue;
+    const t=TOWERS[c.obj], px=x*TS+8, py=y*TS+13;
+    const nearby=targets.filter(cr=>Math.hypot(cr.x-px,cr.y-py)<=t.range);
+    let opts=nearby.filter(cr=>!reserved.has(cr.id));
+    if(!opts.length) continue;
+    opts.sort((a,b)=>t.lead ? Math.hypot(a.x-a.tx,a.y-a.ty)-Math.hypot(b.x-b.tx,b.y-b.ty)
+      : Math.hypot(a.x-px,a.y-py)-Math.hypot(b.x-px,b.y-py));
+    if(t.splash) {
+      let best=opts[0], count=-1;
+      for(const cr of opts) {
+        const n=nearby.filter(o=>Math.hypot(o.x-cr.x,o.y-cr.y)<=t.splash).length;
+        if(n>count) {best=cr;count=n;}
       }
-      c.fireAng = Math.atan2(best.y - py, best.x - px);
-      for (const cr of inRange) if (!cr.dead && Math.hypot(cr.x - best.x, cr.y - best.y) <= t.splash) hitRaidCrow(cr, t.dmg);
-    } else if (t.cone) {
-      inRange.sort((a, b) => Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py));
-      for (const cr of inRange.slice(0, t.cone)) hitRaidCrow(cr, t.dmg);
-    } else if (t.lead) {
-      inRange.sort((a, b) => Math.hypot(a.x - a.tx, a.y - a.ty) - Math.hypot(b.x - b.tx, b.y - b.ty));
-      c.fireAng = Math.atan2(inRange[0].y - py, inRange[0].x - px);
-      hitRaidCrow(inRange[0], t.dmg);
-    } else {
-      inRange.sort((a, b) => Math.hypot(a.x - px, a.y - py) - Math.hypot(b.x - px, b.y - py));
-      c.fireAng = Math.atan2(inRange[0].y - py, inRange[0].x - px);
-      hitRaidCrow(inRange[0], t.dmg);
+      opts=[best];
+    }
+    c.cool=t.rate; c.fireFx=.28;
+    c.fireAng=Math.atan2(opts[0].y-py,opts[0].x-px);
+    for(const cr of opts.slice(0,t.cone || 1)) {
+      launchTowerShot(c.obj,px,py,cr); reserved.add(cr.id);
     }
   }
-  crows = crows.filter(c => !c.dead);
+}
+function updateRaidShots(dt) {
+  for(const fx of raidEffects) fx.life-=dt;
+  raidEffects=raidEffects.filter(fx=>fx.life>0);
+  for(const p of raidShots) {
+    p.age+=dt;
+    const target=crows.find(cr=>cr.id===p.targetId && cr.raid && !cr.dead);
+    if(target) { p.tx=target.x; p.ty=target.y-target.alt-4; }
+    if(p.age<p.duration) continue;
+    const t=TOWERS[p.kind];
+    const alive=crows.filter(cr=>cr.raid && !cr.dead);
+    if(t.splash) {
+      for(const cr of alive) if(Math.hypot(cr.x-p.tx,cr.y-cr.alt-4-p.ty)<=t.splash) hitRaidCrow(cr,t.dmg);
+      raidEffects.push({kind:'blast',x:p.tx,y:p.ty,life:.6,maxLife:.6,radius:t.splash});
+    } else if(t.chain && target) {
+      const nodes=[[p.sx,p.sy]], visited=new Set(); let next=target;
+      for(let i=0;i<t.chain && next;i++) {
+        const x=next.x,y=next.y-next.alt-4;
+        visited.add(next.id); nodes.push([x,y]); hitRaidCrow(next,t.dmg);
+        next=alive.filter(cr=>!cr.dead && !visited.has(cr.id) && Math.hypot(cr.x-x,cr.y-cr.alt-4-y)<34)
+          .sort((a,b)=>Math.hypot(a.x-x,a.y-a.alt-4-y)-Math.hypot(b.x-x,b.y-b.alt-4-y))[0];
+      }
+      raidEffects.push({kind:'chain',nodes,life:.24,maxLife:.24});
+    } else if(t.lead) {
+      const dx=p.tx-p.sx,dy=p.ty-p.sy,len=Math.hypot(dx,dy)||1;
+      for(const cr of alive) {
+        const x=cr.x-p.sx,y=cr.y-cr.alt-4-p.sy,along=(x*dx+y*dy)/len,across=Math.abs(x*dy-y*dx)/len;
+        if(along>=0 && along<=len+15 && across<5) hitRaidCrow(cr,t.dmg);
+      }
+      raidEffects.push({kind:'spark',x:p.tx,y:p.ty,life:.2,maxLife:.2});
+    } else if(target) {
+      hitRaidCrow(target,t.dmg);
+      raidEffects.push({kind:'spark',x:p.tx,y:p.ty,life:.2,maxLife:.2});
+    }
+  }
+  raidShots=raidShots.filter(p=>p.age<p.duration);
+  crows=crows.filter(cr=>!cr.dead);
+}
+function combatLine(x0,y0,x1,y1,color,width=1) {
+  g.fillStyle=color;
+  const n=Math.max(1,Math.ceil(Math.hypot(x1-x0,y1-y0)));
+  for(let i=0;i<=n;i++) g.fillRect(Math.round(x0+(x1-x0)*i/n),Math.round(y0+(y1-y0)*i/n),width,width);
+}
+function drawRaidCombat() {
+  for(const p of raidShots) {
+    const u=Math.min(1,p.age/p.duration),x=p.sx+(p.tx-p.sx)*u;
+    const y=p.sy+(p.ty-p.sy)*u-(p.kind==='bomber' ? Math.sin(u*Math.PI)*32 : p.kind==='hawk' ? Math.sin(u*Math.PI)*13 : 0);
+    const dx=p.tx-p.sx,dy=p.ty-p.sy,len=Math.hypot(dx,dy)||1;
+    const tail=p.kind==='archer' ? 13 : 7;
+    combatLine(x-dx/len*tail,y-dy/len*tail,x,y,p.kind==='chimespin'?WAT[2]:WD[0],2);
+    combatLine(x-dx/len*(tail-1),y-dy/len*(tail-1),x,y,p.kind==='chimespin'?WAT[3]:ACC);
+    if(p.kind==='bomber') {
+      g.fillStyle=BOMB[0];g.fillRect(Math.round(x)-4,Math.round(y)-4,9,8);
+      g.fillStyle=BOMB[2];g.fillRect(Math.round(x)-3,Math.round(y)-3,7,6);
+      g.fillStyle=BOMB[1];g.fillRect(Math.round(x)-1,Math.round(y)-3,2,6);
+      g.fillStyle=BOMB[3];g.fillRect(Math.round(x)-2,Math.round(y)-3,1,3);
+      g.fillStyle=ACC;g.fillRect(Math.round(x)+2,Math.round(y)-6,2,2);
+    } else if(p.kind==='hawk') {
+      const flap=Math.floor(p.age*18)%2 ? -3 : 2;
+      combatLine(x-6,y+flap,x,y,SCP[0],2); combatLine(x,y,x+6,y+flap,SCP[0],2);
+      combatLine(x-5,y+flap,x,y,SCP[2]); combatLine(x,y,x+5,y+flap,SCP[2]);
+      g.fillStyle=SCP[3];g.fillRect(Math.round(x),Math.round(y)-2,2,3);
+    } else {
+      g.fillStyle=p.kind==='chimespin'?WAT[3]:P[3];g.fillRect(Math.round(x)-1,Math.round(y)-1,3,3);
+    }
+  }
+  for(const fx of raidEffects) {
+    const u=1-fx.life/fx.maxLife;
+    if(fx.kind==='chain') {
+      for(let i=1;i<fx.nodes.length;i++) {
+        const [x0,y0]=fx.nodes[i-1],[x1,y1]=fx.nodes[i],mx=(x0+x1)/2+4,my=(y0+y1)/2-4;
+        combatLine(x0,y0,mx,my,WAT[1],3);combatLine(mx,my,x1,y1,WAT[1],3);
+        combatLine(x0,y0,mx,my,WAT[3]);combatLine(mx,my,x1,y1,WAT[3]);
+      }
+    } else if(fx.kind==='blast') {
+      pixelRing(fx.x,fx.y,4+u*fx.radius,BOMB[2]);pixelRing(fx.x,fx.y,2+u*fx.radius*.8,ACC);
+      for(let i=0;i<8;i++) {
+        const a=i*Math.PI/4,rad=u*fx.radius*.6,sz=Math.max(1,Math.ceil((1-u)*7));
+        g.fillStyle=u<.35?BOMB[3]:u<.65?BOMB[2]:SOI[2];
+        g.fillRect(Math.round(fx.x+Math.cos(a)*rad)-sz/2|0,Math.round(fx.y+Math.sin(a)*rad*.7-u*9)-sz/2|0,sz,sz);
+      }
+    } else if(fx.kind==='feathers') {
+      for(let i=0;i<5;i++) {
+        const a=i*2.4,x=fx.x+Math.cos(a)*u*11,y=fx.y+Math.sin(a)*u*8+u*u*8;
+        combatLine(x,y,x+2,y+1,i%2?CRW[1]:CRW[0]);
+      }
+    } else {
+      const r=2+u*8;
+      for(let i=0;i<4;i++) { const a=i*Math.PI/2;combatLine(fx.x+Math.cos(a)*r,fx.y+Math.sin(a)*r,fx.x+Math.cos(a)*(r+2),fx.y+Math.sin(a)*(r+2),fx.kind==='peck'?BOMB[2]:ACC); }
+    }
+  }
 }
 
 /* ================= layout / camera ================= */
 const HUD_H = 12;
 const hudTop = () => satTop;
 const trackerH = () => orders.length && state !== 'title' ? orders.length * 8 + 3 : 0;
-const playTop = () => hudTop() + HUD_H + trackerH();
+const playTop = () => hudTop() + HUD_H + trackerH() + (raid && raid.phase !== 'done' ? 19 : 0);
 const playBot = () => VH - ctrlH;
 function camTarget() {
   const pt = playTop(), pb = playBot();
@@ -2095,7 +2217,8 @@ function update(dt) {
   if (state === 'board') { menuNav(dt, offers.length); return; }
   if (state === 'shed') { menuNav(dt, PRODK.length); return; }
   if (state !== 'day') return;
-  t += dt;
+  // Battle time is separate: even a huge flock cannot push a morning raid into night.
+  if (!raid || raid.phase === 'done') t += dt;
   player.cd = Math.max(0, player.cd - dt);
   player.flail = Math.max(0, player.flail - dt);
   player.act = Math.max(0, player.act - dt);
@@ -2105,8 +2228,8 @@ function update(dt) {
     if (a && REPEATABLE[a.label]) { player.act = .17; a.fn(); }
   }
 
-  if (isRaidDay(day) && !raid && t >= dayLen() * .62) { startRaid(); if (!onDefMap) travelToHomestead(); }
-  if (raid) { updateRaid(dt); updateRaidCrows(dt); updateTowers(dt); }
+  ensureMorningRaid();
+  if (raid) { updateRaid(dt); updateRaidCrows(dt); updateTowers(dt); updateRaidShots(dt); }
   if (onDefMap) { updateDefenseMap(dt); return; }
 
   let mx = jx, my = jy;
@@ -2187,13 +2310,13 @@ function drawCursor() {
   g.fillRect(x0, y1, L, 1); g.fillRect(x0, y1 - L + 1, 1, L);
   g.fillRect(x1 - L + 1, y1, L, 1); g.fillRect(x1, y1 - L + 1, 1, L);
 }
-function pixelRing(x, y, r, col) {
+function pixelRing(x, y, r, col, verticalScale = .75) {
   g.fillStyle = col;
   const n = Math.max(16, r * 3 | 0);
   for (let i = 0; i < n; i++) {
     if (i % 3 === 2) continue;
     const a = i / n * Math.PI * 2;
-    g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * .75), 1, 1);
+    g.fillRect(Math.round(x + Math.cos(a) * r), Math.round(y + Math.sin(a) * r * verticalScale), 1, 1);
   }
 }
 const ROW_MACH = { sprinkler: 1, drill: 1, picker: 1, tower: 3 };
@@ -2276,6 +2399,15 @@ function drawDefCursor() {
   const [tx, ty] = defTargetTile();
   if (tx < 0 || ty < 0 || tx >= DEF_WC || ty >= DEF_WR) return;
   const a = defActionAt(tx, ty), x = tx * TS, y = ty * TS, L = 4;
+  const existing = defGrid[ty][tx].obj;
+  const previewKind = TOWER_SET.has(existing) ? existing : a && a.label === 'Place' ? sel : null;
+  if (previewKind) {
+    pixelRing(x + 8, y + 13, TOWERS[previewKind].range, WAT[1], 1);
+    if (!TOWER_SET.has(existing)) {
+      const sprite = S[previewKind];
+      g.save(); g.globalAlpha = .5; g.drawImage(sprite, x + 8 - sprite.width / 2, y + 15 - sprite.height); g.restore();
+    }
+  }
   g.fillStyle = a ? ACC : P[2];
   const pulse = Math.floor(clock * 3) % 2 ? 0 : 1;
   const x0 = x - pulse, y0 = y - pulse, x1 = x + TS - 1 + pulse, y1 = y + TS - 1 + pulse;
@@ -2365,13 +2497,14 @@ function drawDefenseMap() {
     const px = x * TS, py = y * TS;
     list.push({ y: py + 14, d: () => {
       const tspr = S[c.obj];
-      const tx2 = px + 8 - Math.round(tspr.width / 2), ty2 = py + 15 - tspr.height;
+      const tx2 = px + 8 - Math.round(tspr.width / 2), ty2 = py + 15 - tspr.height + (c.fireFx > .15 ? 1 : 0);
       defShadow(px + 8, py + 15, Math.max(7, tspr.width - 3));
       g.drawImage(tspr, tx2, ty2);
       if (c.fireFx > 0) {
         const fx = px + 8 + Math.cos(c.fireAng || 0) * (tspr.width / 2 + 2);
-        const fy = py + 8 + Math.sin(c.fireAng || 0) * (tspr.width / 2 + 2);
-        g.fillStyle = ACC; g.fillRect(Math.round(fx) - 1, Math.round(fy) - 1, 2, 2);
+        const fy = py - 14 + Math.sin(c.fireAng || 0) * 5;
+        g.fillStyle = ACC; g.fillRect(Math.round(fx) - 2, Math.round(fy) - 1, 5, 3);
+        g.fillStyle=P[3];g.fillRect(Math.round(fx),Math.round(fy)-2,1,5);
       }
     }});
   }
@@ -2389,6 +2522,7 @@ function drawDefenseMap() {
     const fr = Math.floor(cr.anim * 9) % 2 ? S.f1 : S.f2;
     g.drawImage(fr[cr.face], Math.round(cr.x - 5), Math.round(cr.y - cr.alt - 6));
   }
+  drawRaidCombat();
   for (const p of parts) { g.fillStyle = (p.pal || P)[p.col]; g.fillRect(Math.round(p.x), Math.round(p.y), 1, p.rain ? 3 : 1); }
   for (const x of texts) { if (x.s[0] === '+' && x.s[1] === '$') { const o = P[3]; P[3] = ACC; txtO(x.s, x.x, x.y, 3, 1, 'c', 0); P[3] = o; } else txtO(x.s, x.x, x.y, 3, 1, 'c', 0); }
   if (raid && raid.phase !== 'done') {
@@ -2624,9 +2758,9 @@ function drawHUD() {
   }
   if (raid && raid.phase !== 'done') {
     const ry = y + HUD_H + trackerH();
-    g.fillStyle = ACC; g.fillRect(0, ry, VW, 14);
+    g.fillStyle = ACC; g.fillRect(0, ry, VW, 19);
     const alive = crows.filter(c => c.raid).length;
-    const waveTxt = raid.phase === 'between' ? 'RAID  wave ' + (raid.wave + 1) + ' incoming...'
+    const waveTxt = raid.phase === 'between' ? 'WAVE ' + (raid.wave + 1) + ' IN ' + Math.ceil(raid.betweenT) + 's - ' + raid.sizes[raid.wave] + ' CROWS'
       : 'RAID  wave ' + (raid.wave + 1) + '/' + raid.sizes.length + '   crows: ' + alive;
     txt(waveTxt, VW / 2, ry + 2, 0, 1, 'c');
     const bw = Math.min(VW - 24, 140), bx = Math.round((VW - bw) / 2), by = ry + 10;
@@ -2634,6 +2768,7 @@ function drawHUD() {
     const frac = raid.hp / raid.maxHp;
     g.fillStyle = frac > .5 ? '#5a9c4a' : frac > .25 ? '#c99a2e' : '#c0392b';
     g.fillRect(bx, by, Math.round(bw * frac), 2);
+    txt('HOUSE ' + raid.hp + '/' + raid.maxHp + '   DOWN ' + raid.stats.killed, VW / 2, ry + 13, 0, 1, 'c');
   }
 }
 function hintText() {
