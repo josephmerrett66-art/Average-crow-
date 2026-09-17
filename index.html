@@ -54,6 +54,10 @@ const WD  = ['#3a2417', '#7a5030', '#b07f4d', '#e0bd8c'];  // wood
 const HS  = ['#3a2417', '#8a6a4a', '#cbb79a', '#f6efe0'];  // house walls
 const TR  = ['#24401f', '#3f6b30', '#639a45', '#9cc46a'];  // tree
 const CRW = ['#191924', '#3a3a52', '#e8a34a', '#f4ecd8'];  // crow
+const CHK = ['#4a2f18', '#f7f0e0', '#d8402f', '#e8a83c'];  // chicken: outline, body, comb, beak/legs
+const SHP = ['#3a2f28', '#f2ede0', '#241c14', '#c7c0ac'];  // sheep: outline, wool, face/legs, wool shade
+const COWP = ['#2a2018', '#f2ede0', '#4a3527', '#e08978']; // cow: outline, body, patches, nose
+const PIGP = ['#4a2f28', '#f2a8a0', '#d4756a', '#c25a52']; // pig: outline, body, shade, snout
 const SCP = ['#3a2417', '#7d4a3a', '#e0b054', '#f2e6cc'];  // scarecrow
 const MET = ['#2a2f38', '#4d5a6b', '#8c9bb0', '#dfe7f0'];  // machines
 const RCK = ['#2e2e33', '#5d5d66', '#9a9aa6', '#d6d6de'];  // rock
@@ -179,7 +183,59 @@ const S = {
     ".0330...0330"], WD),
   weed: spr(["0...0...","01.010.0",".010.010","..0110.."], GRN),
   rock: spr(["...000000...","..02222220..",".0222333220.","022223322220","022222222220","012222222210",".0111111110.","..00000000.."], RCK),
-  rockCracked: spr(["...000000...","..02202220..",".0220333220.","022203322220","022220222220","012222022210",".0111111110.","..00000000.."], RCK)
+  rockCracked: spr(["...000000...","..02202220..",".0220333220.","022203322220","022220222220","012222022210",".0111111110.","..00000000.."], RCK),
+  hen: pair(["..22....","01111...","0111110.","01111113",".0111110","..0..0.."], CHK),
+  henPeck: pair(["01111...","0111110.","01111113","0111110.","..0..0.."], CHK),
+  chick: pair(["01110","111103","01110","..0.0"], CHK),
+  sheep: pair(["..1111..","1111111.","01111112",".0111110","..0..0..","........"], SHP),
+  lamb: pair(["1111.","111102",".0110","..0.0"], SHP),
+  cow: pair([".0000...","01111110.","01211123","01111110.",".0.0.0.."], COWP),
+  calf: pair(["01110","012123","01110","..0.0"], COWP),
+  pig: pair([".0000...","01111110.","0111113.",".0111110","..0..0.."], PIGP),
+  piglet: pair(["0111.","011103","01110","..0.0"], PIGP),
+  coop: spr([
+    "....0000....",
+    "...022220...",
+    "..02222220..",
+    ".0222222220.",
+    "022222222220",
+    "011111111110",
+    "011333333110",
+    "011333333110",
+    "011111111110",
+    "000000000000",
+    "0330000000330",
+    "0303000003030",
+    "0330000000330"], WD),
+  pen: spr([
+    "0.0.0.0.0.0",
+    "0000000000",
+    "0.........0",
+    "0..0...0..0",
+    "0..........0",
+    "0.........0",
+    "0000000000",
+    "0.0.0.0.0.0"], WD),
+  stall: spr([
+    "...000000...",
+    "..02222220..",
+    ".0222222220.",
+    "022222222220",
+    "023333333320",
+    "023333333320",
+    "023333333320",
+    "022222222220",
+    "000000000000",
+    "0.000..000.0"], WD),
+  sty: spr([
+    "0.0.0.0.0.0",
+    "0000000000",
+    "0.222222.0",
+    "0.222222.0",
+    "0.111111.0",
+    "0.........0",
+    "0000000000",
+    "0.0.0.0.0.0"], SOI)
 };
 
 const COMMON = [
@@ -638,7 +694,6 @@ const UPG = {
   hoe:     { name: 'Iron hoe',         price: 170, rep: 2, info: 'Breaks rocks in one swing' },
   lantern: { name: 'Lantern',          price: 240, rep: 2, info: 'Work on until 22:00 each day' }
 };
-const MACHK = Object.keys(MACH);
 const PROD = {
   soup:    { name: 'Turnip soup',  short: 'soup',    from: 'turnip',  n: 5, sell: 90 },
   pickles: { name: 'Pickles',      short: 'pickles', from: 'cabbage', n: 3, sell: 115 },
@@ -647,10 +702,45 @@ const PROD = {
   jam:     { name: 'Berry jam',    short: 'jam',     from: 'berry',   n: 4, sell: 125 }
 };
 const PRODK = Object.keys(PROD);
+/* ================= animal husbandry =================
+   One data-driven system for every kind: a building you place (reuses
+   the MACH placement/pickup machinery), an animal you buy for it once
+   it has room, and a product it makes overnight if fed the day before. */
+const ANIMALS = {
+  chicken: { building: 'coop',  buildingName: 'Chicken coop', buildingPrice: 180, buildingRep: 1, cap: 4,
+    animalName: 'Chicken', animalPlural: 'chickens', animalPrice: 45,  animalRep: 1, grow: 2, babyName: 'chick',
+    product: 'egg',     productName: 'Egg',     productSell: 18, spawnMsg: 'A chick arrived at the coop!' },
+  sheep:   { building: 'pen',   buildingName: 'Sheep pen',    buildingPrice: 260, buildingRep: 2, cap: 4,
+    animalName: 'Sheep',   animalPlural: 'sheep', animalPrice: 70,  animalRep: 2, grow: 3, babyName: 'lamb', uncountable: true,
+    product: 'wool',    productName: 'Wool',    productSell: 30, spawnMsg: 'A lamb arrived at the pen!' },
+  cow:     { building: 'stall', buildingName: 'Cattle barn',  buildingPrice: 380, buildingRep: 3, cap: 3,
+    animalName: 'Cow',     animalPlural: 'cows', animalPrice: 120, animalRep: 3, grow: 4, babyName: 'calf', uncountable: true,
+    product: 'milk',    productName: 'Milk',    productSell: 24, spawnMsg: 'A calf arrived at the barn!' },
+  pig:     { building: 'sty',   buildingName: 'Pig sty',      buildingPrice: 320, buildingRep: 3, cap: 4,
+    animalName: 'Pig',     animalPlural: 'pigs', animalPrice: 95,  animalRep: 3, grow: 3, babyName: 'piglet',
+    product: 'truffle', productName: 'Truffle', productSell: 65, spawnMsg: 'A piglet arrived at the sty!' }
+};
+const ANIMALK = Object.keys(ANIMALS);
+const ANIMAL_SPRITE = {
+  chicken: { baby: 'chick', adult: 'hen' },
+  sheep:   { baby: 'lamb',  adult: 'sheep' },
+  cow:     { baby: 'calf',  adult: 'cow' },
+  pig:     { baby: 'piglet', adult: 'pig' }
+};
+const ANIMAL_BUILDING_SET = new Set(ANIMALK.map(k => ANIMALS[k].building));
+for (const k of ANIMALK) {
+  const a = ANIMALS[k];
+  MACH[a.building] = { name: a.buildingName, short: a.buildingName, price: a.buildingPrice, rep: a.buildingRep,
+    info: 'Houses up to ' + a.cap + ' ' + (a.cap > 1 ? a.animalPlural : a.animalName.toLowerCase()) + '. Feed it so they produce' };
+}
+const MACHK = Object.keys(MACH);
+const PRODUCTDEF = {};
+for (const k of ANIMALK) { const a = ANIMALS[k]; PRODUCTDEF[a.product] = { name: a.productName, short: a.product, sell: a.productSell }; }
 const GOODS = {};
 for (const k of CROPS) GOODS[k] = CROPDEF[k];
 for (const k of PRODK) GOODS[k] = PROD[k];
-const GOODSK = [...CROPS, ...PRODK];
+for (const k in PRODUCTDEF) GOODS[k] = PRODUCTDEF[k];
+const GOODSK = [...CROPS, ...PRODK, ...Object.keys(PRODUCTDEF)];
 const BUILD = [
   { k: 'roof',  name: 'Patch the roof',  price: 300,  info: 'You wake an hour earlier, so days run from 5:00' },
   { k: 'shed',  name: 'Processing shed', price: 700,  info: 'Turn crops into soup, jam and pies worth far more' },
@@ -681,12 +771,19 @@ function buildShop() {
         : 'Ready in ' + d.days + ' days. Sells for $' + d.sell) + '. ' + seasonNote(k) });
   }
   for (const k of MACHK) SHOP.push({ k, price: MACH[k].price, rep: MACH[k].rep, name: MACH[k].name, info: MACH[k].info, mach: true });
+  SHOP.push({ k: 'feed', price: 3, rep: 1, name: 'Animal feed', info: 'Feed an animal building so it produces overnight', feedItem: true });
+  for (const k of ANIMALK) {
+    const a = ANIMALS[k];
+    if (buildingsOf(k).length) SHOP.push({ k, price: a.animalPrice, rep: a.animalRep, name: a.animalName,
+      info: 'Needs a ' + a.buildingName.toLowerCase() + ' with room. Makes ' + a.productName.toLowerCase() + ' when fed',
+      animal: true, animalKind: k });
+  }
   for (const k in UPG) if (!owned[k]) SHOP.push({ k, price: UPG[k].price, rep: UPG[k].rep, name: UPG[k].name, info: UPG[k].info, upg: true });
   const next = BUILD.find(b => !built[b.k]);
   if (next) SHOP.unshift({ k: next.k, price: next.price, name: next.name, info: next.info, build: true });
 }
-const ITEMS = [...CROPS, ...MACHK];
-const itemName = k => CROPDEF[k] ? CROPDEF[k].name : MACH[k].short;
+const ITEMS = [...CROPS, ...MACHK, 'feed'];
+const itemName = k => CROPDEF[k] ? CROPDEF[k].name : (MACH[k] ? MACH[k].short : 'Feed');
 const seasonOf = d => Math.floor((d - 1) / 12) % 4;
 const seasonDay = d => ((d - 1) % 12) + 1;
 const inSeason = k => built.green || CROPDEF[k].seasons.includes(seasonOf(day));
@@ -700,7 +797,7 @@ const CLIENTS = [
 ];
 
 let state = 'title', clock = 0, t = 0, day = 1, weather = 'sun', weatherNext = 'sun', noonDone = false;
-let farm = [], crows = [], parts = [], texts = [], rings = [];
+let farm = [], crows = [], animals = [], parts = [], texts = [], rings = [];
 let inv = null, coins = 0, can = 0, canMax = 10, sel = 'turnip', rep = 0, offers = [], orders = [], owned = {}, built = {}, shed = [];
 let music = true, musT = 2, musI = 0, holdUse = false;
 let flags = {}, msg = null, sleepArm = 0, menuIdx = 0, menuMsg = null, spawnT = 5, navT = 0;
@@ -714,7 +811,7 @@ function blankFarm() {
   for (let y = 0; y < WR; y++) {
     const row = [];
     for (let x = 0; x < WC; x++) {
-      const c = { soil: false, wet: false, crop: null, obj: null, hp: 0, seed: null };
+      const c = { soil: false, wet: false, crop: null, obj: null, hp: 0, seed: null, fed: false };
       if (tillable(x, y)) {
         const starter = x <= 17 && y <= 9, v = r();
         if (!starter && v < .07) { c.obj = 'rock'; c.hp = 2; }
@@ -727,6 +824,7 @@ function blankFarm() {
 }
 function newGame() {
   blankFarm();
+  animals = [];
   inv = { basket: {} };
   for (const k of ITEMS) inv[k] = 0;
   for (const k of GOODSK) inv.basket[k] = 0;
@@ -769,6 +867,7 @@ function startDay(first) {
   player.x = 56; player.y = 62; player.fx = 0; player.fy = 1;
   can = canMax; dayStats = { earned: 0 }; spawnT = 6; sleepArm = 0;
   autoLines = first ? [] : runMachines();
+  if (!first) autoLines.push(...runAnimals());
   if (done.length) autoLines.unshift('the shed made ' + done.map(k => PROD[k].short).join(' and '));
   msg = { s: SEASONS[seasonOf(day)] + ' day ' + seasonDay(day) + '. ' + WEATHER[weather].line, t: 3.4 };
   if (autoLines.length) msg = { s: 'Overnight: ' + autoLines.join(', '), t: 4.2 };
@@ -787,6 +886,73 @@ const clockMin = () => startMin() + (endMin() - startMin()) * Math.min(1, t / da
 const maxOrders = () => built.barn ? 3 : 2;
 function eachMach(kind, fn) {
   for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) if (farm[y][x].obj === kind) fn(farm[y][x], x, y);
+}
+function buildingsOf(kind) {
+  const bld = ANIMALS[kind].building, list = [];
+  for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) if (farm[y][x].obj === bld) list.push([x, y]);
+  return list;
+}
+function animalCountAt(x, y) { return animals.reduce((n, a) => n + (a.hx === x && a.hy === y ? 1 : 0), 0); }
+function freeBuilding(kind) {
+  for (const [x, y] of buildingsOf(kind)) if (animalCountAt(x, y) < ANIMALS[kind].cap) return [x, y];
+  return null;
+}
+function buyAnimal(kind) {
+  const spot = freeBuilding(kind);
+  if (!spot) return false;
+  const [x, y] = spot;
+  const sx = x * TS + 8 + (Math.random() * 10 - 5), sy = y * TS + 13 + (Math.random() * 6 - 3);
+  animals.push({ kind, x: sx, y: sy, tx: sx, ty: sy, hx: x, hy: y, stage: 0, growT: 0,
+    face: Math.random() < .5 ? 0 : 1, anim: Math.random() * 9, wait: Math.random() * 1.5 });
+  return true;
+}
+function updateAnimals(dt) {
+  for (const a of animals) {
+    a.anim += dt;
+    const d = Math.hypot(a.tx - a.x, a.ty - a.y);
+    if (d < 2) {
+      a.wait -= dt;
+      if (a.wait <= 0) {
+        const hx = a.hx * TS + 8, hy = a.hy * TS + 13;
+        a.tx = hx + (Math.random() * 26 - 13);
+        a.ty = hy + (Math.random() * 18 - 9);
+        a.wait = 1.5 + Math.random() * 2.5;
+      }
+    } else {
+      const dx = a.tx - a.x, dy = a.ty - a.y, sp = 13;
+      const step = Math.min(d, sp * dt);
+      a.x += dx / d * step; a.y += dy / d * step;
+      if (Math.abs(dx) > .5) a.face = dx > 0 ? 1 : 0;
+    }
+  }
+}
+function runAnimals() {
+  const counts = {};
+  let grew = 0;
+  for (const a of animals) {
+    const def = ANIMALS[a.kind];
+    if (a.stage === 0) {
+      a.growT++;
+      if (a.growT >= def.grow) { a.stage = 1; grew++; }
+    } else {
+      const c = farm[a.hy] && farm[a.hy][a.hx];
+      if (c && c.obj === def.building && c.fed) {
+        inv.basket[def.product] = (inv.basket[def.product] || 0) + 1;
+        counts[def.product] = (counts[def.product] || 0) + 1;
+      }
+    }
+  }
+  const buildingSet = ANIMAL_BUILDING_SET;
+  for (const row of farm) for (const c of row) if (buildingSet.has(c.obj)) c.fed = false;
+  const uncountable = {};
+  for (const k of ANIMALK) if (ANIMALS[k].uncountable) uncountable[ANIMALS[k].product] = true;
+  const L = [];
+  for (const k in counts) {
+    const n = counts[k], name = PRODUCTDEF[k].name.toLowerCase();
+    L.push('collected ' + n + ' ' + (uncountable[k] ? name : name + (n === 1 ? '' : 's')));
+  }
+  if (grew) L.push(grew + (grew === 1 ? ' baby grew up' : ' babies grew up'));
+  return L;
 }
 // Row machines: place one at the left of a row and it works the whole line
 // out to the right edge of the field, instead of needing one every few tiles.
@@ -857,11 +1023,13 @@ function makeOffer() {
   const client = pickR(fresh.length ? fresh : cpool);
   let avail = CROPS.filter(k => CROPDEF[k].rep <= rep);
   if (built.shed && rep >= 2) avail = avail.concat(PRODK.filter(k => CROPDEF[PROD[k].from].rep <= rep));
+  for (const k of ANIMALK) if (animals.some(a => a.kind === k && a.stage === 1)) avail = avail.concat([ANIMALS[k].product]);
   let kinds = 1 + (rep >= 1 && Math.random() < .5 ? 1 : 0) + (rep >= 3 && Math.random() < .4 ? 1 : 0);
   kinds = Math.min(kinds, avail.length);
   const pool = avail.slice(), items = {};
   const base = { turnip: [3, 7], cabbage: [2, 5], corn: [2, 4], pumpkin: [1, 3], berry: [4, 8],
-    soup: [1, 2], pickles: [1, 2], meal: [1, 2], pie: [1, 2], jam: [1, 2] };
+    soup: [1, 2], pickles: [1, 2], meal: [1, 2], pie: [1, 2], jam: [1, 2],
+    egg: [4, 9], wool: [1, 3], milk: [3, 7], truffle: [1, 2] };
   let value = 0, maxDays = 0;
   for (let i = 0; i < kinds; i++) {
     const k = pool.splice(Math.random() * pool.length | 0, 1)[0];
@@ -869,7 +1037,7 @@ function makeOffer() {
     const q = Math.round((a + Math.random() * (b - a)) * (1 + rep * .2));
     items[k] = { need: q, got: 0 };
     value += q * GOODS[k].sell;
-    const d0 = CROPDEF[k] || CROPDEF[PROD[k].from];
+    const d0 = CROPDEF[k] || (PROD[k] && CROPDEF[PROD[k].from]) || { days: 2 };
     maxDays = Math.max(maxDays, d0.days + (PROD[k] ? 2 : 0));
   }
   const bonus = client.rep >= 3 ? 1.9 : client.rep >= 2 ? 1.75 : 1.6;
@@ -919,8 +1087,8 @@ function storageOK() {
 function save() {
   try {
     if (!storageOK()) return;
-    const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music,
-      farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0])) };
+    const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals,
+      farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0, c.fed ? 1 : 0])) };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     hasSave = true;
   } catch (e) {}
@@ -936,11 +1104,13 @@ function loadGame() {
     blankFarm();
     d.farm.forEach((row, y) => row.forEach((a, x) => {
       const c = farm[y][x]; c.soil = !!a[0]; c.wet = !!a[1]; c.obj = a[2] || null; c.hp = a[3] || 0;
-      c.crop = a[4] ? { type: a[4], stage: a[5] } : null; c.seed = a[6] || null;
+      c.crop = a[4] ? { type: a[4], stage: a[5] } : null; c.seed = a[6] || null; c.fed = !!a[7];
     }));
     ({ day, coins, canMax, inv, sel, rep, offers, orders } = d);
     flags = d.flags || {}; owned = d.owned || {}; built = d.built || {}; shed = d.shed || [];
     weather = d.weather || 'sun'; weatherNext = d.weatherNext || 'sun';
+    animals = d.animals || (d.chickens ? d.chickens.map(c => ({ ...c, kind: 'chicken' })) : []);
+    for (const a of animals) { if (!a.kind) a.kind = 'chicken'; if (typeof a.tx !== 'number') { a.tx = a.x; a.ty = a.y; } a.anim = Math.random() * 9; a.wait = Math.random() * 1.5; }
     if (typeof d.music === 'boolean') music = d.music;
     for (const k of ITEMS) if (typeof inv[k] !== 'number') inv[k] = 0;
     if (!inv.basket) inv.basket = {};
@@ -966,8 +1136,25 @@ function candidateTiles() {
     });
 }
 function targetTile() {
-  for (const [tx, ty] of candidateTiles()) {
-    if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) continue;
+  const candidates = candidateTiles().filter(([tx, ty]) => tx >= 0 && ty >= 0 && tx < WC && ty < WR);
+  // A held item that only does something useful on one specific nearby tile (loading a drill
+  // with a seed, feeding a hungry animal building) should win over a neighboring tile that has
+  // *some* action available no matter what you're holding (Pick up, Look/Fed) — otherwise a
+  // tightly packed row of machines or pens can make the one you actually want unreachable,
+  // since the first candidate with any valid action normally wins.
+  if (CROPDEF[sel] && inv[sel] > 0) {
+    for (const [tx, ty] of candidates) {
+      const c = farm[ty][tx];
+      if (c && c.obj === 'drill' && c.seed !== sel) return [tx, ty];
+    }
+  }
+  if (sel === 'feed' && inv.feed > 0) {
+    for (const [tx, ty] of candidates) {
+      const c = farm[ty][tx];
+      if (c && ANIMAL_BUILDING_SET.has(c.obj) && !c.fed && animalCountAt(tx, ty) > 0) return [tx, ty];
+    }
+  }
+  for (const [tx, ty] of candidates) {
     if (actionAt(tx, ty)) return [tx, ty];
   }
   const [ix, iy] = idealPoint();
@@ -1007,6 +1194,17 @@ function actionAt(tx, ty) {
   if (c.obj === 'drill' && CROPDEF[sel] && inv[sel] > 0 && c.seed !== sel) return { label: 'Load ' + CROPDEF[sel].name.toLowerCase(), fn: () => {
     c.seed = sel; sfx.buy(); texts.push({ s: 'Drill loaded with ' + CROPDEF[sel].name.toLowerCase(), x: tx * TS + 8, y: ty * TS - 6, life: 1.4 });
   }};
+  const animalDef = Object.values(ANIMALS).find(a => a.building === c.obj);
+  if (animalDef) {
+    const n = animalCountAt(tx, ty);
+    if (sel === 'feed' && inv.feed > 0 && !c.fed && n > 0) return { label: 'Feed', fn: () => {
+      inv.feed--; c.fed = true; flags.fed = true; sfx.plant(); updateItemBtn();
+      texts.push({ s: 'Fed!', x: tx * TS + 8, y: ty * TS - 4, life: 1 });
+    }};
+    if (n === 0) return { label: 'Pick up', fn: () => { inv[c.obj]++; c.obj = null; c.fed = false; sfx.tick(); updateItemBtn(); } };
+    const animalWord = n === 1 ? animalDef.animalName.toLowerCase() : animalDef.animalPlural;
+    return { label: c.fed ? 'Fed' : 'Look', fn: () => say(c.fed ? 'This ' + animalDef.buildingName.toLowerCase() + ' is fed for today' : n + ' ' + animalWord + ' need' + (n === 1 ? 's' : '') + ' feed', 2.2) };
+  }
   if (MACH[c.obj]) return { label: 'Pick up', fn: () => { inv[c.obj]++; c.obj = null; c.seed = null; sfx.tick(); updateItemBtn(); } };
   if (c.crop) {
     if (c.crop.stage >= CROPDEF[c.crop.type].days) return { label: 'Harvest', fn: () => harvest(c, tx, ty) };
@@ -1016,7 +1214,8 @@ function actionAt(tx, ty) {
   const placeable = !!MACH[sel];
   if (c.soil) {
     if (placeable && inv[sel] > 0 && sel !== 'drill') return { label: 'Place', fn: () => {
-      c.obj = sel; c.seed = null; inv[sel]--; sfx.plant(); if (!inv[sel]) cycleItem(); updateItemBtn();
+      c.obj = sel; c.seed = null; inv[sel]--; sfx.plant(); if (ANIMAL_BUILDING_SET.has(sel)) flags.animalBuildingPlaced = true;
+      if (!inv[sel]) cycleItem(); updateItemBtn();
     }};
     if (!placeable && inv[sel] > 0) return { label: 'Plant', fn: () => plant(c) };
     if (!c.wet) return { label: 'Water', fn: () => water(c, tx, ty) };
@@ -1025,6 +1224,7 @@ function actionAt(tx, ty) {
   if (placeable && inv[sel] > 0) return { label: 'Place', fn: () => {
     c.obj = sel; c.seed = null; inv[sel]--; sfx.plant();
     if (sel === 'drill') say('Face the drill holding seeds to load it', 3);
+    if (ANIMAL_BUILDING_SET.has(sel)) { flags.animalBuildingPlaced = true; say('Buy an animal from the crate, then feed it here', 3); }
     if (!inv[sel]) cycleItem();
     updateItemBtn();
   }};
@@ -1084,9 +1284,15 @@ function buy() {
   if (it.rep && rep < it.rep) { menuMsg = 'Needs ' + it.rep + (it.rep === 1 ? ' reputation star' : ' reputation stars'); sfx.nope(); return; }
   if (it.upg && owned[it.k]) { menuMsg = 'You already own it'; sfx.nope(); return; }
   if (it.seed && !inSeason(it.k)) { menuMsg = 'Out of season, but you can store the seeds'; }
+  if (it.animal && !freeBuilding(it.animalKind)) { menuMsg = 'Build a ' + ANIMALS[it.animalKind].buildingName.toLowerCase() + ' with room first'; sfx.nope(); return; }
   if (coins < it.price) { menuMsg = 'Not enough coins'; sfx.nope(); return; }
   coins -= it.price;
   if (it.mach) flags.mach = true;
+  if (it.animal) {
+    buyAnimal(it.animalKind);
+    menuMsg = ANIMALS[it.animalKind].spawnMsg; sfx.buy();
+    return;
+  }
   if (it.build) {
     built[it.k] = true;
     applyBuilt();
@@ -1360,6 +1566,7 @@ function update(dt) {
 
   t += dt;
   updateCrows(dt);
+  updateAnimals(dt);
   if (!noonDone && clockMin() >= 780) {
     noonDone = true;
     const extra = [];
@@ -1506,6 +1713,29 @@ function drawWorld() {
       shadow(px + 8, py + 15, 10);
       g.drawImage(S.cart, px + 2, py + 4);
     }});
+    if (ANIMAL_BUILDING_SET.has(c.obj)) list.push({ y: py + 14, d: () => {
+      shadow(px + 8, py + 15, 11);
+      g.drawImage(S[c.obj], px + 2, py + 1);
+      if (c.fed) { g.fillStyle = ACC; g.fillRect(px + 10, py - 3, 1, 3); g.fillRect(px + 9, py - 2, 3, 1); }
+    }});
+  }
+  if (state === 'day') for (const a of animals) {
+    const def = ANIMALS[a.kind], home = farm[a.hy] && farm[a.hy][a.hx];
+    if (!home || home.obj !== def.building) continue;
+    list.push({ y: a.y + 2, d: () => {
+      shadow(a.x, a.y, a.stage === 0 ? 4 : 6);
+      const spr = ANIMAL_SPRITE[a.kind];
+      if (a.stage === 0) {
+        g.drawImage(S[spr.baby][a.face], Math.round(a.x - 3), Math.round(a.y - 6));
+      } else {
+        let key = spr.adult;
+        if (a.kind === 'chicken') {
+          const moving = Math.hypot(a.tx - a.x, a.ty - a.y) >= 2;
+          if (!moving && Math.floor(a.anim * 2) % 3 === 0) key = 'henPeck';
+        }
+        g.drawImage(S[key][a.face], Math.round(a.x - 4), Math.round(a.y - 8));
+      }
+    }});
   }
   for (const cr of crows) if (cr.st === 'eat') list.push({ y: cr.y + .1, d: () => {
     const peck = Math.floor(cr.anim * 3) % 2;
@@ -1648,6 +1878,9 @@ function hintText() {
   if (built.shed && !flags.cooked) return 'Cook crops at the shed for far more money';
   if (seasonOf(day) === 3 && !built.green) return 'Nothing grows in winter. Build, or buy a greenhouse';
   if (rep >= 1 && !flags.mach && !SHOP.some(i => i.mach && inv[i.k] > 0)) return 'The crate now sells machines that work for you';
+  if (rep >= 1 && !flags.animalBuildingPlaced && ANIMALK.some(k => inv[ANIMALS[k].building] > 0)) return 'Place your new animal building, then buy an animal for it';
+  if (ANIMALK.some(k => buildingsOf(k).length) && !animals.length) return 'Buy an animal from the crate for your building';
+  if (animals.length && !flags.fed) return 'Hold feed and tap your animal building so they produce';
   return null;
 }
 function panel(w, h) {
@@ -1693,7 +1926,8 @@ function drawShop() {
   const it = SHOP[menuIdx], by = y + 20 + vis * rowH;
   g.fillStyle = P[1]; g.fillRect(x + 6, by, w - 12, 1);
   wrap(menuMsg || it.info, Math.floor((w - 12) / 4)).slice(0, 2).forEach((l, i) => txt(l, x + w / 2, by + 4 + i * 8, menuMsg ? 3 : 2, 1, 'c'));
-  const have = ITEMS.includes(it.k) ? 'You have ' + inv[it.k] + '   ' : '';
+  const have = it.animal ? 'You have ' + animals.filter(a => a.kind === it.animalKind).length + ' ' + ANIMALS[it.animalKind].animalPlural + '   '
+    : ITEMS.includes(it.k) ? 'You have ' + inv[it.k] + '   ' : '';
   txt(have + 'Shoo: close', x + w / 2, y + h - 9, 2, 1, 'c');
 }
 function drawShed() {
