@@ -876,7 +876,7 @@ const TOWERS = {
     info: 'Cheap and always on. Weak, but keeps crows off nearby crops year-round' },
   chimespin: { name: 'Chime Spinner',    short: 'Spinner', price: 150, rep: 1, range: 48, dmg: 1, rate: .32,
     info: 'Fires fast at the nearest crow. Built for thinning out a swarm' },
-  archer:    { name: 'Slingshot Archer', short: 'Archer',  price: 260, rep: 2, range: 95, dmg: 2, rate: .85, lead: true,
+  archer:    { name: 'Slingshot Archer', short: 'Archer',  price: 260, rep: 2, range: 70, dmg: 2, rate: .85, lead: true,
     info: 'Long range. Always strikes whichever crow is closest to your field' },
   bomber:    { name: 'Pumpkin Bomber',   short: 'Bomber',  price: 420, rep: 3, range: 65, dmg: 2, rate: 1.8, splash: 22,
     info: 'Slow, but the blast hits every crow clustered together' },
@@ -1734,27 +1734,36 @@ function raidWaveSizes(year) {
   return [8, 12, 16, 22].map(n => Math.max(1, Math.round(n * mult)));
 }
 let raid = null;
+const HOUSE_CX = 3.5 * TS, HOUSE_CY = 2 * TS, HOUSE_MAX_HP = 160, HOUSE_DMG_PER_LEAK = 4;
 function startRaid() {
   const sizes = raidWaveSizes(raidYear(day));
-  raid = { wave: 0, sizes, phase: 'between', betweenT: 3, toSpawn: 0, spawnT: 0, stats: { killed: 0, leaked: 0, spawned: 0 } };
-  msg = { s: 'Crows on the horizon! ' + sizes.length + ' waves incoming.', t: 3.4 };
+  raid = { wave: 0, sizes, phase: 'between', betweenT: 3, toSpawn: 0, spawnT: 0,
+    hp: HOUSE_MAX_HP, maxHp: HOUSE_MAX_HP, stats: { killed: 0, leaked: 0, spawned: 0 } };
+  msg = { s: 'Crows on the horizon! ' + sizes.length + ' waves incoming. Defend the house!', t: 3.6 };
   sfx.caw();
+}
+function raidDefeat() {
+  texts.push({ s: 'The house is overrun!', x: HOUSE_CX, y: HOUSE_CY - 20, life: 2.8 });
+  msg = { s: 'The crows overran the house. ' + raid.stats.killed + ' downed, but it wasn\'t enough.', t: 5 };
+  sfx.caw();
+  raid.phase = 'done';
+  crows = crows.filter(c => !c.raid);
 }
 function finishRaid() {
   const s = raid.stats;
-  const success = s.leaked <= Math.ceil(s.spawned * .2);
-  const reward = 40 + raidYear(day) * 20;
-  if (success) { coins += reward; dayStats.earned += reward; }
-  const line = success
-    ? 'Raid repelled! ' + s.killed + ' crows downed, ' + s.leaked + ' got through. +$' + reward
-    : 'The crows broke through. ' + s.killed + ' downed, ' + s.leaked + ' got through.';
-  msg = { s: line, t: 5 };
+  const hpFrac = raid.hp / raid.maxHp;
+  const reward = Math.round((40 + raidYear(day) * 20) * (.5 + hpFrac * .5));
+  coins += reward; dayStats.earned += reward;
+  const line = 'Raid repelled! ' + s.killed + ' crows downed, ' + s.leaked + ' got through. '
+    + 'House at ' + raid.hp + '/' + raid.maxHp + ' HP. +$' + reward;
+  msg = { s: line, t: 5.5 };
   sfx.caw();
   raid.phase = 'done';
 }
 function raidTargetPoint() {
-  const coreX = 17 * TS + 8, coreY = 17 * TS + 8;
-  return [coreX + (Math.random() - .5) * 170, coreY + (Math.random() - .5) * 220];
+  const tx = Math.max(20, Math.min(WW - 20, HOUSE_CX + (Math.random() - .5) * 120));
+  const ty = Math.max(20, Math.min(WH - 20, HOUSE_CY + (Math.random() - .5) * 120));
+  return [tx, ty];
 }
 function spawnRaidCrow() {
   const [tx, ty] = raidTargetPoint();
@@ -1793,13 +1802,9 @@ function updateRaidCrows(dt) {
     cr.anim += dt;
     const dx = cr.tx - cr.x, dy = cr.ty - cr.y, d = Math.hypot(dx, dy), sp = 46;
     if (d <= sp * dt + .5) {
-      const ftx = Math.floor(cr.tx / TS), fty = Math.floor(cr.ty / TS);
-      const c = farm[fty] && farm[fty][ftx];
-      if (c && c.crop) {
-        if (c.crop.stage <= 0) c.crop = null; else c.crop.stage--;
-        burst(cr.x, cr.y - 4, 4, 2, 30, 40, SOI);
-      }
       raid.stats.leaked++;
+      raid.hp = Math.max(0, raid.hp - HOUSE_DMG_PER_LEAK);
+      burst(cr.x, cr.y - 4, 4, 2, 30, 40, SOI);
       cr.dead = true;
     } else {
       cr.x += dx / d * sp * dt; cr.y += dy / d * sp * dt;
@@ -1808,6 +1813,7 @@ function updateRaidCrows(dt) {
     }
   }
   crows = crows.filter(c => !c.dead);
+  if (raid.phase !== 'done' && raid.hp <= 0) raidDefeat();
 }
 function hitRaidCrow(cr, dmg) {
   if (cr.dead) return;
@@ -2330,11 +2336,16 @@ function drawHUD() {
   }
   if (raid && raid.phase !== 'done') {
     const ry = y + HUD_H + trackerH();
-    g.fillStyle = ACC; g.fillRect(0, ry, VW, 9);
+    g.fillStyle = ACC; g.fillRect(0, ry, VW, 14);
     const alive = crows.filter(c => c.raid).length;
     const waveTxt = raid.phase === 'between' ? 'RAID  wave ' + (raid.wave + 1) + ' incoming...'
       : 'RAID  wave ' + (raid.wave + 1) + '/' + raid.sizes.length + '   crows: ' + alive;
     txt(waveTxt, VW / 2, ry + 2, 0, 1, 'c');
+    const bw = Math.min(VW - 24, 140), bx = Math.round((VW - bw) / 2), by = ry + 10;
+    g.fillStyle = P[0]; g.fillRect(bx - 1, by - 1, bw + 2, 4);
+    const frac = raid.hp / raid.maxHp;
+    g.fillStyle = frac > .5 ? '#5a9c4a' : frac > .25 ? '#c99a2e' : '#c0392b';
+    g.fillRect(bx, by, Math.round(bw * frac), 2);
   }
 }
 function hintText() {
