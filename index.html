@@ -629,6 +629,15 @@ function buildBg(season) {
   R(0, ox + 6, oy + 9, 4, 3); R(1, ox + 7, oy + 10, 2, 1);
   R(0, ox + 7, oy - 4, 2, 7); R(0, ox + 9, oy - 4, 5, 3); R(3, ox + 10, oy - 3, 3, 1);
 
+  // path gate to the homestead (7,3) — a signpost with a short dirt path leading off
+  use(WD);
+  const gx = 7 * TS, gy = 3 * TS;
+  R(0, gx + 6, gy - 2, 2, 15); R(1, gx + 7, gy - 2, 1, 15);
+  R(0, gx, gy - 9, 15, 7); R(2, gx + 1, gy - 8, 13, 5); R(3, gx + 1, gy - 8, 13, 1);
+  R(0, gx + 4, gy - 6, 7, 1); R(0, gx + 4, gy - 4, 5, 1);
+  use(SOI);
+  for (let i = -3; i < 22; i++) { const w = 10 - Math.abs(i) / 3 | 0; R(3, gx + 8 - w / 2, gy + 13 + i, Math.max(2, w), 1); }
+
   // pond with a dithered shore
   use(WAT);
   const px = POND.x, py = POND.y, pw = POND.w, ph = POND.h;
