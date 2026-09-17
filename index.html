@@ -934,19 +934,37 @@ for (const k of ANIMALK) {
 /* ================= crow raid towers =================
    One-tile foundations, tall silhouettes, and distinct projectile attacks. */
 const TOWERS = {
-  scarepost: { name: 'Scarecrow Watchtower', short: 'Watchtower', price: 60, rep: 0, range: 65, dmg: 1, rate: .85,
+  scarepost: { name: 'Scarecrow Watchtower', short: 'Watchtower', price: 60, rep: 0, range: 42, dmg: 1, rate: .85,
     info: 'A timber watchtower. Fires golden seed bolts at approaching crows' },
-  chimespin: { name: 'Storm Chime Tower', short: 'Storm chime', price: 150, rep: 1, range: 72, dmg: 1, rate: .65, chain: 3,
+  chimespin: { name: 'Storm Chime Tower', short: 'Storm chime', price: 150, rep: 1, range: 48, dmg: 1, rate: .65, chain: 3,
     info: 'Electric chimes arc between three nearby crows' },
-  archer: { name: 'Ballista Tower', short: 'Ballista', price: 260, rep: 2, range: 105, dmg: 1, rate: .55, lead: true,
+  archer: { name: 'Ballista Tower', short: 'Ballista', price: 260, rep: 2, range: 75, dmg: 1, rate: .55, lead: true,
     info: 'Long-range bolts pierce a line of crows. Targets the closest threat to home' },
-  bomber: { name: 'Pumpkin Mortar', short: 'Mortar', price: 420, rep: 3, range: 100, dmg: 1, rate: 1.65, splash: 32,
+  bomber: { name: 'Pumpkin Mortar', short: 'Mortar', price: 420, rep: 3, range: 62, dmg: 1, rate: 1.65, splash: 32,
     info: 'Lobs explosive pumpkins into flocks. Wide blasts clear clustered crows' },
-  hawk: { name: 'Falcon Keep', short: 'Falcon keep', price: 650, rep: 4, range: 95, dmg: 1, rate: 1.4, cone: 6,
+  hawk: { name: 'Falcon Keep', short: 'Falcon keep', price: 650, rep: 4, range: 55, dmg: 1, rate: 1.4, cone: 6,
     info: 'Launches a flight of six golden hawks to hunt separate targets' }
 };
 const TOWERK = Object.keys(TOWERS);
 const TOWER_SET = new Set(TOWERK);
+// Tier upgrades: one-time purchases (reusing the same owned[] pattern as
+// boots/hoe/lantern) that retroactively strengthen every tower of that type,
+// present and future. The intended alternative to just buying more towers.
+const TOWER_TIERS = {
+  scarepost: { t2: { price: 250, rep: 1, dmg: 2, range: 1.15, rate: .85 }, t3: { price: 700, rep: 3, dmg: 3.5, range: 1.3, rate: .7 } },
+  chimespin: { t2: { price: 500, rep: 2, dmg: 2, range: 1.15, rate: .8, chain: 4 }, t3: { price: 1400, rep: 4, dmg: 3.5, range: 1.3, rate: .65, chain: 5 } },
+  archer:    { t2: { price: 850, rep: 2, dmg: 2, range: 1.15, rate: .85 }, t3: { price: 2300, rep: 4, dmg: 3.5, range: 1.3, rate: .7 } },
+  bomber:    { t2: { price: 1350, rep: 3, dmg: 2, range: 1.1, rate: .85, splash: 40 }, t3: { price: 3600, rep: 5, dmg: 3.5, range: 1.25, rate: .7, splash: 52 } },
+  hawk:      { t2: { price: 2000, rep: 3, dmg: 2, range: 1.1, rate: .85, cone: 8 }, t3: { price: 5400, rep: 5, dmg: 3.5, range: 1.25, rate: .7, cone: 10 } }
+};
+function towerTier(k) { return owned[k + '_t3'] ? 3 : owned[k + '_t2'] ? 2 : 1; }
+function towerStats(k) {
+  const base = TOWERS[k], tiers = TOWER_TIERS[k];
+  const tier = owned[k + '_t3'] ? tiers.t3 : owned[k + '_t2'] ? tiers.t2 : null;
+  if (!tier) return base;
+  return { ...base, dmg: base.dmg * tier.dmg, range: base.range * tier.range, rate: base.rate * tier.rate,
+    chain: tier.chain || base.chain, splash: tier.splash || base.splash, cone: tier.cone || base.cone };
+}
 for (const k of TOWERK) {
   const t = TOWERS[k];
   MACH[k] = { name: t.name, short: t.short, price: t.price, rep: t.rep, info: t.info };
@@ -970,6 +988,23 @@ for (const k of CROPS) GOODS[k] = CROPDEF[k];
 for (const k of PRODK) GOODS[k] = PROD[k];
 for (const k in PRODUCTDEF) GOODS[k] = PRODUCTDEF[k];
 const GOODSK = [...CROPS, ...PRODK, ...Object.keys(PRODUCTDEF)];
+// Wholesale cap: the market absorbs a limited $ value of goods at full price
+// each day (global, not per-good, so diversifying crop types can't route
+// around it); everything past that sells at a reduced wholesale rate.
+// Applies to direct market selling (bin + the delivery cart's auto-sell)
+// only -- fulfilling restaurant orders is exempt, since orders are meant to
+// stay the best, most reliable income.
+const DAILY_SELL_CAP_VALUE = 220, WHOLESALE_RATE = .55;
+let dailySoldValue = 0;
+function sellPrice(k, qty) {
+  let revenue = 0;
+  const full = GOODS[k].sell;
+  for (let i = 0; i < qty; i++) {
+    if (dailySoldValue < DAILY_SELL_CAP_VALUE) { revenue += full; dailySoldValue += full; }
+    else revenue += Math.round(full * WHOLESALE_RATE);
+  }
+  return revenue;
+}
 const BUILD = [
   { k: 'roof',  name: 'Patch the roof',  price: 300,  info: 'You wake an hour earlier, so days run from 5:00' },
   { k: 'shed',  name: 'Processing shed', price: 700,  info: 'Turn crops into soup, jam and pies worth far more' },
@@ -1017,7 +1052,13 @@ function buildShop(cat) {
         animal: true, animalKind: k });
     }
   } else if (shopCat === 'defense') {
-    for (const k of TOWERK) SHOP.push({ k, price: MACH[k].price, rep: MACH[k].rep, name: MACH[k].name, info: MACH[k].info, mach: true });
+    for (const k of TOWERK) {
+      const tier = towerTier(k);
+      SHOP.push({ k, price: towerPrice(k), rep: MACH[k].rep, name: MACH[k].name + (tier > 1 ? ' (Tier ' + tier + ')' : ''), info: MACH[k].info, mach: true, tower: true });
+      const tiers = TOWER_TIERS[k];
+      if (!owned[k + '_t2']) SHOP.push({ k: k + '_t2', price: tiers.t2.price, rep: tiers.t2.rep, name: MACH[k].short + ' \u2192 Tier 2', info: 'Strengthens every ' + MACH[k].short.toLowerCase() + ' you own or build, from now on', upg: true });
+      else if (!owned[k + '_t3']) SHOP.push({ k: k + '_t3', price: tiers.t3.price, rep: tiers.t3.rep, name: MACH[k].short + ' \u2192 Tier 3', info: 'Strengthens every ' + MACH[k].short.toLowerCase() + ' even further', upg: true });
+    }
   }
 }
 const ITEMS = [...CROPS, ...MACHK, 'feed'];
@@ -1048,6 +1089,11 @@ function blankDefGrid() {
   }
 }
 let carriedAnimals = {}; // buildingKey -> queued batches [{kind,stage,growT}...] from a picked-up, stocked building
+// Each additional tower of the same type costs more than the last (a soft
+// cap that rewards upgrading what you have over spamming quantity).
+let towersBought = {};
+const TOWER_COST_GROWTH = 1.3;
+function towerPrice(k) { return Math.round(TOWERS[k].price * Math.pow(TOWER_COST_GROWTH, towersBought[k] || 0)); }
 let flowerSpots = [], critters = [], defFlowerSpots = [], defCritters = [];
 let inv = null, coins = 0, can = 0, canMax = 10, sel = 'turnip', rep = 0, offers = [], orders = [], owned = {}, built = {}, shed = [];
 let music = true, holdUse = false;
@@ -1079,6 +1125,7 @@ function newGame() {
   onDefMap = false;
   animals = [];
   carriedAnimals = {};
+  towersBought = {};
   inv = { basket: {} };
   for (const k of ITEMS) inv[k] = 0;
   for (const k of GOODSK) inv.basket[k] = 0;
@@ -1107,6 +1154,7 @@ function refreshBg() {
 }
 function startDay(first, restoring = false) {
   state = 'day'; t = 0; crows = []; parts = []; texts = []; rings = []; noonDone = false; raid = null; raidShots = []; raidEffects = [];
+  dailySoldValue = 0;
   weather = first ? (weather || 'sun') : weatherNext;
   weatherNext = pickWeather(day + 1);
   if (seasonOf(day) !== bgSeason) refreshBg();
@@ -1280,7 +1328,8 @@ function runMachines() {
     orders = orders.filter(o => !done.includes(o));
     for (const k of GOODSK) {
       const keep = Math.min(inv.basket[k], reserved(k)), n = inv.basket[k] - keep;
-      money += n * GOODS[k].sell; inv.basket[k] = keep;
+      if (n > 0) money += sellPrice(k, n);
+      inv.basket[k] = keep;
     }
     coins += money;
     if (filled.length) L.push('the cart finished the ' + filled.join(' and ') + ' order');
@@ -1369,7 +1418,7 @@ function storageOK() {
 function save() {
   try {
     if (!storageOK()) return;
-    const data = { onDefMap, day, t, raid, raidShots, raidCrows: crows.filter(c => c.raid), coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals,
+    const data = { onDefMap, day, t, raid, raidShots, raidCrows: crows.filter(c => c.raid), coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals, towersBought,
       farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0, c.fed ? 1 : 0])),
       defGrid: defGrid.map(row => row.map(c => c.obj || 0)) };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1404,6 +1453,7 @@ function loadGame() {
     weather = d.weather || 'sun'; weatherNext = d.weatherNext || 'sun';
     animals = d.animals || (d.chickens ? d.chickens.map(c => ({ ...c, kind: 'chicken' })) : []);
     carriedAnimals = d.carriedAnimals || {};
+    towersBought = d.towersBought || {};
     for (const a of animals) { if (!a.kind) a.kind = 'chicken'; if (typeof a.tx !== 'number') { a.tx = a.x; a.ty = a.y; } a.anim = Math.random() * 9; a.wait = Math.random() * 1.5; }
     if (typeof d.music === 'boolean') music = d.music;
     for (const k of ITEMS) if (typeof inv[k] !== 'number') inv[k] = 0;
@@ -1568,15 +1618,21 @@ function refill() {
   can = canMax; sfx.refill(); say('Can refilled');
 }
 function sell() {
-  let n = 0, total = 0, kept = 0;
+  let n = 0, total = 0, kept = 0, hitCap = false;
   for (const k of GOODSK) {
     const keep = Math.min(inv.basket[k], reserved(k)), s = inv.basket[k] - keep;
-    kept += keep; n += s; total += s * GOODS[k].sell; inv.basket[k] = keep;
+    if (s > 0) {
+      if (dailySoldValue >= DAILY_SELL_CAP_VALUE) hitCap = true;
+      total += sellPrice(k, s);
+      if (dailySoldValue >= DAILY_SELL_CAP_VALUE) hitCap = true;
+    }
+    kept += keep; n += s; inv.basket[k] = keep;
   }
   if (!n) { say(kept ? 'Your basket is saved for orders' : 'Harvest crops first, then sell here'); sfx.nope(); return; }
   coins += total; dayStats.earned += total; flags.sold = true;
   texts.push({ s: '+$' + total, x: 5 * TS + 8, y: 2 * TS - 4, life: 1.3 });
   if (kept) say('Kept ' + kept + ' for your orders');
+  else if (hitCap) say('Market\u2019s stocked up \u2014 extra sold wholesale today', 2.6);
   sfx.sell();
 }
 function trySleep() {
@@ -1623,6 +1679,7 @@ function buy() {
     buildShop();
     menuIdx = Math.min(menuIdx, SHOP.length - 1);
   } else inv[it.k]++;
+  if (it.tower) { towersBought[it.k] = (towersBought[it.k] || 0) + 1; buildShop(); menuIdx = Math.min(menuIdx, SHOP.length - 1); }
   menuMsg = 'Bought ' + it.name.toLowerCase(); sfx.buy();
   if (ITEMS.includes(it.k) && !inv[sel]) sel = it.k;
   updateItemBtn();
@@ -1961,9 +2018,9 @@ function finishRaid() {
   save();
 }
 function raidTargetPoint() {
-  const tx = HOUSE_CX + (Math.random() - .5) * (HOUSE_TW * TS - 8);
-  const ty = HOUSE_CY + (Math.random() - .5) * (HOUSE_TH * TS - 8);
-  return [tx, ty];
+  const tx = HOUSE_CX + (Math.random() - .5) * 140;
+  const ty = HOUSE_CY + (Math.random() - .5) * 180;
+  return [Math.max(20, Math.min(DEF_WW - 20, tx)), Math.max(20, Math.min(DEF_WH - 20, ty))];
 }
 function spawnRaidCrow() {
   const [tx, ty] = raidTargetPoint();
@@ -1973,7 +2030,7 @@ function spawnRaidCrow() {
   else if (side === 1) { x = DEF_WW + 20; y = ty + (Math.random() - .5) * 260; }
   else if (side === 2) { x = tx + (Math.random() - .5) * 260; y = DEF_WH + 20; }
   else { x = -20; y = ty + (Math.random() - .5) * 260; }
-  crows.push({ id: raid.nextCrowId++, x, y, tx, ty, st: 'raidfly', raid: true, hp: 1, maxHp: 1, alt: 18 + Math.random() * 10, speed: 29 + Math.random() * 9,
+  crows.push({ id: raid.nextCrowId++, x, y, tx, ty, st: 'raidfly', raid: true, hp: 2, maxHp: 2, alt: 18 + Math.random() * 10, speed: 29 + Math.random() * 9,
     face: x < tx ? 1 : 0, anim: Math.random() * 9, vx: 0, vy: 0, life: 0 });
   raid.stats.spawned++;
 }
@@ -2041,7 +2098,7 @@ function updateTowers(dt) {
   for (let y=0;y<DEF_WR;y++) for(let x=0;x<DEF_WC;x++) {
     const c=defGrid[y][x];
     if(!TOWER_SET.has(c.obj) || c.cool>0) continue;
-    const t=TOWERS[c.obj], px=x*TS+8, py=y*TS+13;
+    const t=towerStats(c.obj), px=x*TS+8, py=y*TS+13;
     const nearby=targets.filter(cr=>Math.hypot(cr.x-px,cr.y-py)<=t.range);
     let opts=nearby.filter(cr=>!reserved.has(cr.id));
     if(!opts.length) continue;
@@ -2070,7 +2127,7 @@ function updateRaidShots(dt) {
     const target=crows.find(cr=>cr.id===p.targetId && cr.raid && !cr.dead);
     if(target) { p.tx=target.x; p.ty=target.y-target.alt-4; }
     if(p.age<p.duration) continue;
-    const t=TOWERS[p.kind];
+    const t=towerStats(p.kind);
     const alive=crows.filter(cr=>cr.raid && !cr.dead);
     if(t.splash) {
       for(const cr of alive) if(Math.hypot(cr.x-p.tx,cr.y-cr.alt-4-p.ty)<=t.splash) hitRaidCrow(cr,t.dmg);
@@ -2402,7 +2459,7 @@ function drawDefCursor() {
   const existing = defGrid[ty][tx].obj;
   const previewKind = TOWER_SET.has(existing) ? existing : a && a.label === 'Place' ? sel : null;
   if (previewKind) {
-    pixelRing(x + 8, y + 13, TOWERS[previewKind].range, WAT[1], 1);
+    pixelRing(x + 8, y + 13, towerStats(previewKind).range, WAT[1], 1);
     if (!TOWER_SET.has(existing)) {
       const sprite = S[previewKind];
       g.save(); g.globalAlpha = .5; g.drawImage(sprite, x + 8 - sprite.width / 2, y + 15 - sprite.height); g.restore();
@@ -2500,6 +2557,11 @@ function drawDefenseMap() {
       const tx2 = px + 8 - Math.round(tspr.width / 2), ty2 = py + 15 - tspr.height + (c.fireFx > .15 ? 1 : 0);
       defShadow(px + 8, py + 15, Math.max(7, tspr.width - 3));
       g.drawImage(tspr, tx2, ty2);
+      const tier = towerTier(c.obj);
+      if (tier > 1) {
+        g.fillStyle = tier === 3 ? '#f0c419' : '#c9d4dc';
+        for (let i = 0; i < tier - 1; i++) g.fillRect(px + 8 - tier + 1 + i * 3, ty2 - 3, 2, 2);
+      }
       if (c.fireFx > 0) {
         const fx = px + 8 + Math.cos(c.fireAng || 0) * (tspr.width / 2 + 2);
         const fy = py - 14 + Math.sin(c.fireAng || 0) * 5;
