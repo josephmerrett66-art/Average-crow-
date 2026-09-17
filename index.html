@@ -58,6 +58,9 @@ const CHK = ['#4a2f18', '#f7f0e0', '#d8402f', '#e8a83c'];  // chicken: outline, 
 const SHP = ['#3a2f28', '#f2ede0', '#241c14', '#c7c0ac'];  // sheep: outline, wool, face/legs, wool shade
 const COWP = ['#2a2018', '#f2ede0', '#4a3527', '#e08978']; // cow: outline, body, patches, nose
 const PIGP = ['#4a2f28', '#f2a8a0', '#d4756a', '#c25a52']; // pig: outline, body, shade, snout
+const BEE = ['#241d16', '#f0c419', '#fff8e8', '#3a2f14'];  // bee: outline, yellow, wing, dark stripe
+const BFLY1 = ['#241d16', '#e8763c', '#f7c04a', '#fff8e8']; // butterfly: outline, wing orange, wing gold, highlight
+const BFLY2 = ['#241d16', '#5a8fd6', '#a8c8f0', '#fff8e8']; // butterfly: outline, wing blue, wing pale, highlight
 const SCP = ['#3a2417', '#7d4a3a', '#e0b054', '#f2e6cc'];  // scarecrow
 const MET = ['#2a2f38', '#4d5a6b', '#8c9bb0', '#dfe7f0'];  // machines
 const RCK = ['#2e2e33', '#5d5d66', '#9a9aa6', '#d6d6de'];  // rock
@@ -303,7 +306,13 @@ const S = {
     "0.....111111.0",
     "0............0",
     "00000000000000",
-    "0.0.0.0.0.0.0."], SOI)
+    "0.0.0.0.0.0.0."], SOI),
+  bee1: spr(["2.2","111","101","010"], BEE),
+  bee2: spr([".1.","111","101","010"], BEE),
+  bfly1a: spr(["22...22",".22.22.","..000..",".33.33.","33...33"], BFLY1),
+  bfly1b: spr(["..2.2..","..222..","...0...","..333..","..3.3.."], BFLY1),
+  bfly2a: spr(["22...22",".22.22.","..000..",".33.33.","33...33"], BFLY2),
+  bfly2b: spr(["..2.2..","..222..","...0...","..333..","..3.3.."], BFLY2)
 };
 
 const COMMON = [
@@ -451,13 +460,17 @@ function buildBg(season) {
     dot(c, x + 4, y); dot(c, x + 4, y + 1);
   }
   // little flowers
-  for (let i = 0; i < 90; i++) {
+  flowerSpots = [];
+  for (let i = 0; i < 130; i++) {
     const x = 8 + r() * (WW - 18) | 0, y = 28 + r() * (WH - 54) | 0;
     if (!free(x, y)) continue;
     for (const [ox, oy] of [[0, 0], [4, 2], [-3, 3]]) {
       const fx = x + ox, fy = y + oy;
-      dot(1, fx, fy - 1); dot(1, fx - 1, fy); dot(1, fx + 1, fy); dot(1, fx, fy + 1);
-      b.fillStyle = SFL; b.fillRect(fx, fy, 1, 1);
+      b.fillStyle = SFL;
+      b.fillRect(fx, fy - 1, 1, 1); b.fillRect(fx - 1, fy, 1, 1); b.fillRect(fx + 1, fy, 1, 1); b.fillRect(fx, fy + 1, 1, 1);
+      b.fillStyle = '#fff4d6';
+      b.fillRect(fx, fy, 1, 1);
+      flowerSpots.push([fx, fy]);
     }
   }
 
@@ -711,10 +724,17 @@ function makeDither(level) {
 let D50, D25, D12;
 
 /* ================= audio ================= */
-let ac = null;
+let ac = null, bgMusic = null;
 function au() {
   if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   if (ac && ac.state === 'suspended') ac.resume();
+  if (!bgMusic) {
+    try { bgMusic = new Audio('crow_game_theme.mp3'); bgMusic.loop = true; bgMusic.volume = .45; } catch (e) {}
+  }
+  if (bgMusic) {
+    if (music && bgMusic.paused) bgMusic.play().catch(() => {});
+    if (!music && !bgMusic.paused) bgMusic.pause();
+  }
 }
 function tone(f, d, type = 'triangle', v = .05, slide = 0, delay = 0) {
   if (!ac) return;
@@ -884,8 +904,9 @@ const CLIENTS = [
 let state = 'title', clock = 0, t = 0, day = 1, weather = 'sun', weatherNext = 'sun', noonDone = false;
 let farm = [], crows = [], animals = [], parts = [], texts = [], rings = [];
 let carriedAnimals = {}; // buildingKey -> queued batches [{kind,stage,growT}...] from a picked-up, stocked building
+let flowerSpots = [], critters = [];
 let inv = null, coins = 0, can = 0, canMax = 10, sel = 'turnip', rep = 0, offers = [], orders = [], owned = {}, built = {}, shed = [];
-let music = true, musT = 2, musI = 0, holdUse = false;
+let music = true, holdUse = false;
 let flags = {}, msg = null, sleepArm = 0, menuIdx = 0, menuMsg = null, spawnT = 5, navT = 0;
 let dayStats = { earned: 0 }, cardLines = [], cardTitle = '', cardT = 0, hasSave = false, autoLines = [], shopTop = 0;
 const player = { x: 56, y: 62, fx: 0, fy: 1, step: 0, moving: false, bob: 0, flail: 0, cd: 0, act: 0 };
@@ -934,6 +955,7 @@ function refreshBg() {
   const sn = seasonOf(day);
   bgSeason = sn;
   buildBg(SEASONPAL[sn]);
+  spawnCritters();
 }
 function startDay(first) {
   state = 'day'; t = 0; crows = []; parts = []; texts = []; rings = []; noonDone = false;
@@ -1539,6 +1561,52 @@ function flee(cr, fx, fy) {
   if (d < 2) { dx = Math.random() - .5; dy = -1; d = Math.hypot(dx, dy); }
   cr.st = 'flee'; cr.life = 3; cr.vx = dx / d * 110; cr.vy = dy / d * 110 - 25; cr.face = cr.vx > 0 ? 1 : 0;
 }
+// Purely ambient wildlife — bees and butterflies that drift between flower spots.
+// No gameplay effect; they exist for atmosphere only.
+function spawnCritters() {
+  critters = [];
+  const spots = flowerSpots.length ? flowerSpots : [[WW / 2, WH / 2]];
+  const pick = () => spots[Math.random() * spots.length | 0];
+  for (let i = 0; i < 6; i++) {
+    const [hx, hy] = pick();
+    critters.push({ kind: 'bee', x: hx, y: hy, hx, hy, phase: Math.random() * 10 });
+  }
+  for (let i = 0; i < 5; i++) {
+    const [hx, hy] = pick();
+    critters.push({ kind: 'butterfly', variant: Math.random() < .5 ? 1 : 2,
+      x: hx, y: hy, tx: hx, ty: hy, wait: Math.random() * 2, phase: Math.random() * 10 });
+  }
+}
+function updateCritters(dt) {
+  for (const cr of critters) {
+    cr.phase += dt;
+    if (cr.kind === 'bee') {
+      if (Math.random() < dt * .04 && flowerSpots.length) { const [nx, ny] = flowerSpots[Math.random() * flowerSpots.length | 0]; cr.hx = nx; cr.hy = ny; }
+      cr.x = cr.hx + Math.sin(cr.phase * 3.1) * 7 + Math.sin(cr.phase * 5.3) * 3;
+      cr.y = cr.hy + Math.cos(cr.phase * 2.6) * 5 + Math.sin(cr.phase * 4.7) * 2;
+    } else {
+      const d = Math.hypot(cr.tx - cr.x, cr.ty - cr.y);
+      if (d < 3) {
+        cr.wait -= dt;
+        if (cr.wait <= 0) {
+          if (flowerSpots.length && Math.random() < .5) {
+            const [nx, ny] = flowerSpots[Math.random() * flowerSpots.length | 0];
+            cr.tx = nx + (Math.random() * 10 - 5); cr.ty = ny + (Math.random() * 10 - 5);
+          } else {
+            cr.tx = cr.x + (Math.random() * 60 - 30); cr.ty = cr.y + (Math.random() * 40 - 20);
+          }
+          cr.tx = Math.max(10, Math.min(WW - 10, cr.tx)); cr.ty = Math.max(24, Math.min(WH - 24, cr.ty));
+          cr.wait = 1 + Math.random() * 2.5;
+        }
+      } else {
+        const dx = cr.tx - cr.x, dy = cr.ty - cr.y, sp = 12;
+        const step = Math.min(d, sp * dt);
+        cr.x += dx / d * step + Math.sin(cr.phase * 6) * .4;
+        cr.y += dy / d * step + Math.cos(cr.phase * 5) * .4;
+      }
+    }
+  }
+}
 function updateCrows(dt) {
   const ch = guards();
   for (const cr of crows) {
@@ -1614,20 +1682,8 @@ function menuNav(dt, count) {
 }
 const REPEATABLE = { Till: 1, Water: 1, Plant: 1, Harvest: 1, Clear: 1, Break: 1 };
 const SCALE = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
-function musicTick(dt) {
-  if (!music || !ac || state === 'title') return;
-  musT -= dt;
-  if (musT > 0) return;
-  const night = state === 'night' || clockMin() > endMin() - 60;
-  const n = SCALE[(musI * 2 + (Math.random() * 3 | 0)) % SCALE.length] * (night ? .5 : 1);
-  tone(n, night ? 1.7 : 1.1, 'triangle', .02);
-  if (musI % 3 === 0) tone(130.81 * (musI % 6 === 0 ? 1 : 1.5), 2.4, 'sine', .016);
-  musI++;
-  musT = night ? 2.3 : 1.5 + Math.random() * .9;
-}
 function update(dt) {
   clock += dt;
-  musicTick(dt);
   for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt; p.vx *= .96; p.life -= dt; }
   parts = parts.filter(p => p.life > 0);
   for (const x of texts) { x.y -= 14 * dt; x.life -= dt; }
@@ -1681,6 +1737,7 @@ function update(dt) {
   t += dt;
   updateCrows(dt);
   updateAnimals(dt);
+  updateCritters(dt);
   if (!noonDone && clockMin() >= 780) {
     noonDone = true;
     const extra = [];
@@ -1913,6 +1970,18 @@ function drawWorld() {
   for (const cr of flying) {
     const fr = Math.floor(cr.anim * (cr.st === 'flee' ? 14 : 9)) % 2 ? S.f1 : S.f2;
     g.drawImage(fr[cr.face], Math.round(cr.x - 5), Math.round(cr.y - cr.alt - 6));
+  }
+  if (state === 'day') for (const cr of critters) {
+    if (cr.x < cx - 10 || cr.x > cx + VW + 10 || cr.y < cy - 10 || cr.y > cy + VH + 10) continue;
+    if (cr.kind === 'bee') {
+      const fr = Math.floor(cr.phase * 10) % 2 ? S.bee1 : S.bee2;
+      g.drawImage(fr, Math.round(cr.x - 1.5), Math.round(cr.y - 2));
+    } else {
+      const flap = Math.floor(cr.phase * 6) % 2;
+      const key = cr.variant === 1 ? (flap ? 'bfly1b' : 'bfly1a') : (flap ? 'bfly2b' : 'bfly2a');
+      const img = S[key];
+      g.drawImage(img, Math.round(cr.x - img.width / 2), Math.round(cr.y - img.height / 2));
+    }
   }
   for (const r of rings) { pixelRing(r.x, r.y, r.r, P[0]); pixelRing(r.x, r.y, r.r - 2, ACC); }
   for (const p of parts) { g.fillStyle = (p.pal || P)[p.col]; g.fillRect(Math.round(p.x), Math.round(p.y), 1, p.rain ? 3 : 1); }
@@ -2194,8 +2263,7 @@ function render() {
   drawWorld();
   if (state === 'title') { drawTitle(); return; }
   const cm2 = clockMin(), e2 = endMin();
-  let dark = cm2 > e2 - 45 ? 2 : cm2 > e2 - 165 ? 1 : 0;
-  if (weather === 'rain' || weather === 'frost') dark = Math.max(dark, 1);
+  const dark = cm2 > e2 - 45 ? 2 : cm2 > e2 - 165 ? 1 : 0;
   if (dark === 1) g.drawImage(D12, 0, 0);
   else if (dark === 2) g.drawImage(D25, 0, 0);
   if (state === 'night') { g.drawImage(D50, 0, 0); drawHUD(); drawCard(); return; }
@@ -2258,7 +2326,7 @@ function secondary() {
   else if (state === 'night') continueCard();
 }
 function third() { au(); if (state === 'day' || state === 'shop') cycleItem(); }
-function toggleMusic() { music = !music; au(); say(music ? 'Music on' : 'Music off', 1.6); if (music) { musT = 0; musicTick(0); } }
+function toggleMusic() { music = !music; au(); say(music ? 'Music on' : 'Music off', 1.6); }
 
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase(); keys[k] = true;
