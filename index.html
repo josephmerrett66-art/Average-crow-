@@ -734,6 +734,16 @@ for (const k of ANIMALK) {
     info: 'Houses up to ' + a.cap + ' ' + (a.cap > 1 ? a.animalPlural : a.animalName.toLowerCase()) + '. Feed it so they produce' };
 }
 const MACHK = Object.keys(MACH);
+const ANIMAL_BUILDING_KEYS = ANIMALK.map(k => ANIMALS[k].building);
+const WORK_MACH_KEYS = MACHK.filter(k => !ANIMAL_BUILDING_KEYS.includes(k));
+const SHOP_CATS = [
+  { k: 'seeds',     name: 'Seeds' },
+  { k: 'machines',  name: 'Machines' },
+  { k: 'buildings', name: 'Buildings' },
+  { k: 'animals',   name: 'Animals' }
+];
+const SHOP_CAT_LABEL = { seeds: 'Seeds', machines: 'Machines', buildings: 'Buildings', animals: 'Animals' };
+let shopCat = 'seeds';
 const PRODUCTDEF = {};
 for (const k of ANIMALK) { const a = ANIMALS[k]; PRODUCTDEF[a.product] = { name: a.productName, short: a.product, sell: a.productSell }; }
 const GOODS = {};
@@ -762,25 +772,32 @@ const WEATHER_ODDS = [
   [['frost', .4], ['sun', .3], ['wind', .3]]
 ];
 let SHOP = [];
-function buildShop() {
+function buildShop(cat) {
+  if (cat) shopCat = cat;
   SHOP = [];
-  for (const k of CROPS) {
-    const d = CROPDEF[k];
-    SHOP.push({ k, price: d.seed, rep: d.rep, name: d.name + ' seeds', seed: true,
-      info: (d.regrow ? 'Ready in ' + d.days + ' days, then every ' + d.regrow + '. $' + d.sell
-        : 'Ready in ' + d.days + ' days. Sells for $' + d.sell) + '. ' + seasonNote(k) });
+  if (shopCat === 'seeds') {
+    for (const k of CROPS) {
+      const d = CROPDEF[k];
+      SHOP.push({ k, price: d.seed, rep: d.rep, name: d.name + ' seeds', seed: true,
+        info: (d.regrow ? 'Ready in ' + d.days + ' days, then every ' + d.regrow + '. $' + d.sell
+          : 'Ready in ' + d.days + ' days. Sells for $' + d.sell) + '. ' + seasonNote(k) });
+    }
+  } else if (shopCat === 'machines') {
+    for (const k of WORK_MACH_KEYS) SHOP.push({ k, price: MACH[k].price, rep: MACH[k].rep, name: MACH[k].name, info: MACH[k].info, mach: true });
+    for (const k in UPG) if (!owned[k]) SHOP.push({ k, price: UPG[k].price, rep: UPG[k].rep, name: UPG[k].name, info: UPG[k].info, upg: true });
+  } else if (shopCat === 'buildings') {
+    for (const k of ANIMAL_BUILDING_KEYS) SHOP.push({ k, price: MACH[k].price, rep: MACH[k].rep, name: MACH[k].name, info: MACH[k].info, mach: true });
+    const next = BUILD.find(b => !built[b.k]);
+    if (next) SHOP.unshift({ k: next.k, price: next.price, name: next.name, info: next.info, build: true });
+  } else if (shopCat === 'animals') {
+    SHOP.push({ k: 'feed', price: 3, rep: 1, name: 'Animal feed', info: 'Feed an animal building so it produces overnight', feedItem: true });
+    for (const k of ANIMALK) {
+      const a = ANIMALS[k];
+      if (buildingsOf(k).length) SHOP.push({ k, price: a.animalPrice, rep: a.animalRep, name: a.animalName,
+        info: 'Needs a ' + a.buildingName.toLowerCase() + ' with room. Makes ' + a.productName.toLowerCase() + ' when fed',
+        animal: true, animalKind: k });
+    }
   }
-  for (const k of MACHK) SHOP.push({ k, price: MACH[k].price, rep: MACH[k].rep, name: MACH[k].name, info: MACH[k].info, mach: true });
-  SHOP.push({ k: 'feed', price: 3, rep: 1, name: 'Animal feed', info: 'Feed an animal building so it produces overnight', feedItem: true });
-  for (const k of ANIMALK) {
-    const a = ANIMALS[k];
-    if (buildingsOf(k).length) SHOP.push({ k, price: a.animalPrice, rep: a.animalRep, name: a.animalName,
-      info: 'Needs a ' + a.buildingName.toLowerCase() + ' with room. Makes ' + a.productName.toLowerCase() + ' when fed',
-      animal: true, animalKind: k });
-  }
-  for (const k in UPG) if (!owned[k]) SHOP.push({ k, price: UPG[k].price, rep: UPG[k].rep, name: UPG[k].name, info: UPG[k].info, upg: true });
-  const next = BUILD.find(b => !built[b.k]);
-  if (next) SHOP.unshift({ k: next.k, price: next.price, name: next.name, info: next.info, build: true });
 }
 const ITEMS = [...CROPS, ...MACHK, 'feed'];
 const itemName = k => CROPDEF[k] ? CROPDEF[k].name : (MACH[k] ? MACH[k].short : 'Feed');
@@ -1170,7 +1187,7 @@ function actionAt(tx, ty) {
   const st = STATIC[tx + ',' + ty];
   if (st === 'shack') return { label: 'Sleep', fn: trySleep };
   if (st === 'bin') return { label: 'Sell', fn: sell };
-  if (st === 'crate') return { label: 'Shop', fn: () => openMenu('shop') };
+  if (st === 'crate') return { label: 'Shop', fn: () => openMenu('shopcat') };
   if (st === 'board') return { label: 'Orders', fn: () => { openMenu('board'); flags.board = true; } };
   if (st === 'box') return { label: 'Deliver', fn: deliver };
   if (st === 'shed') return { label: 'Cook', fn: () => openMenu('shed') };
@@ -1224,7 +1241,7 @@ function actionAt(tx, ty) {
   if (placeable && inv[sel] > 0) return { label: 'Place', fn: () => {
     c.obj = sel; c.seed = null; inv[sel]--; sfx.plant();
     if (sel === 'drill') say('Face the drill holding seeds to load it', 3);
-    if (ANIMAL_BUILDING_SET.has(sel)) { flags.animalBuildingPlaced = true; say('Buy an animal from the crate, then feed it here', 3); }
+    if (ANIMAL_BUILDING_SET.has(sel)) { flags.animalBuildingPlaced = true; say('Check the crate\'s animal shop, then feed it here', 3); }
     if (!inv[sel]) cycleItem();
     updateItemBtn();
   }};
@@ -1270,7 +1287,7 @@ function trySleep() {
   if (sleepArm > 0) { endDay(false); return; }
   sleepArm = 2.5; say('Tap Sleep again to end the day', 2.5);
 }
-function openMenu(kind) { state = kind; menuIdx = 0; menuMsg = null; shopTop = 0; if (kind === 'shop') buildShop(); sfx.tick(); }
+function openMenu(kind, arg) { state = kind; menuIdx = 0; menuMsg = null; shopTop = 0; if (kind === 'shop') buildShop(arg); sfx.tick(); }
 const shedCap = () => built.barn ? 3 : 2;
 function cook() {
   const k = PRODK[menuIdx], d = PROD[k];
@@ -1529,6 +1546,7 @@ function update(dt) {
     return;
   }
   if (state === 'night') { cardT += dt; updateCrows(dt); return; }
+  if (state === 'shopcat') { menuNav(dt, SHOP_CATS.length); return; }
   if (state === 'shop') { menuNav(dt, SHOP.length); return; }
   if (state === 'board') { menuNav(dt, offers.length); return; }
   if (state === 'shed') { menuNav(dt, PRODK.length); return; }
@@ -1877,9 +1895,9 @@ function hintText() {
   if (day === 1 && clockMin() > 1020) return 'Sleep in your shack to end the day';
   if (built.shed && !flags.cooked) return 'Cook crops at the shed for far more money';
   if (seasonOf(day) === 3 && !built.green) return 'Nothing grows in winter. Build, or buy a greenhouse';
-  if (rep >= 1 && !flags.mach && !SHOP.some(i => i.mach && inv[i.k] > 0)) return 'The crate now sells machines that work for you';
-  if (rep >= 1 && !flags.animalBuildingPlaced && ANIMALK.some(k => inv[ANIMALS[k].building] > 0)) return 'Place your new animal building, then buy an animal for it';
-  if (ANIMALK.some(k => buildingsOf(k).length) && !animals.length) return 'Buy an animal from the crate for your building';
+  if (rep >= 1 && !flags.mach && !WORK_MACH_KEYS.some(k => inv[k] > 0)) return 'The crate now has a machine shop for things that work for you';
+  if (rep >= 1 && !flags.animalBuildingPlaced && ANIMALK.some(k => inv[ANIMALS[k].building] > 0)) return 'Place your new animal building, then check the animal shop';
+  if (ANIMALK.some(k => buildingsOf(k).length) && !animals.length) return 'The crate\'s animal shop has one for your building';
   if (animals.length && !flags.fed) return 'Hold feed and tap your animal building so they produce';
   return null;
 }
@@ -1900,16 +1918,39 @@ function drawCard() {
   if (cardT > .7 && Math.floor(clock * 2) % 2 === 0) txt('Tap next', x + w / 2, y + h - 9, 3, 1, 'c');
 }
 let menuRows = [];
+function drawShopCat() {
+  const w = Math.min(VW - 12, 160), rowH = 17;
+  const h = 24 + SHOP_CATS.length * rowH + 12;
+  const [x, y] = panel(w, h);
+  txtC('Seed crate', x + 6, y + 5, ACC);
+  icon('coin', x + w - 14 - textW(String(coins)), y + 5); txt(coins, x + w - 6, y + 5, 3, 1, 'r');
+  menuRows = [];
+  SHOP_CATS.forEach((c, i) => {
+    const on = i === menuIdx, ry = y + 22 + i * rowH;
+    menuRows.push([x, ry - 5, w, rowH, i]);
+    if (on) { g.fillStyle = ACC; g.fillRect(x + 3, ry - 5, w - 6, rowH - 2); }
+    txt(c.name, x + w / 2, ry, on ? 0 : 3, 1, 'c');
+  });
+  txt('Shoo: close', x + w / 2, y + h - 8, 2, 1, 'c');
+}
 function drawShop() {
   const w = Math.min(VW - 12, 214), rowH = 10;
+  if (!SHOP.length) {
+    const h = 46;
+    const [x, y] = panel(w, h);
+    txtC(SHOP_CAT_LABEL[shopCat] || 'Shop', x + 6, y + 5, ACC);
+    txt('Nothing here right now', x + w / 2, y + h / 2 - 2, 2, 1, 'c');
+    txt('Shoo: back', x + w / 2, y + h - 9, 2, 1, 'c');
+    return;
+  }
   const avail = playBot() - playTop() - 12;
-  const vis = Math.max(4, Math.min(SHOP.length, Math.floor((avail - 58) / rowH)));
+  const vis = Math.min(SHOP.length, Math.max(1, Math.floor((avail - 58) / rowH)));
   const h = 22 + vis * rowH + 36;
   if (menuIdx < shopTop) shopTop = menuIdx;
   if (menuIdx >= shopTop + vis) shopTop = menuIdx - vis + 1;
   shopTop = Math.max(0, Math.min(SHOP.length - vis, shopTop));
   const [x, y] = panel(w, h);
-  txtC('Seed crate', x + 6, y + 5, ACC);
+  txtC(SHOP_CAT_LABEL[shopCat] || 'Shop', x + 6, y + 5, ACC);
   icon('coin', x + w - 14 - textW(String(coins)), y + 5); txt(coins, x + w - 6, y + 5, 3, 1, 'r');
   menuRows = [];
   for (let i = shopTop; i < shopTop + vis; i++) {
@@ -1928,7 +1969,7 @@ function drawShop() {
   wrap(menuMsg || it.info, Math.floor((w - 12) / 4)).slice(0, 2).forEach((l, i) => txt(l, x + w / 2, by + 4 + i * 8, menuMsg ? 3 : 2, 1, 'c'));
   const have = it.animal ? 'You have ' + animals.filter(a => a.kind === it.animalKind).length + ' ' + ANIMALS[it.animalKind].animalPlural + '   '
     : ITEMS.includes(it.k) ? 'You have ' + inv[it.k] + '   ' : '';
-  txt(have + 'Shoo: close', x + w / 2, y + h - 9, 2, 1, 'c');
+  txt(have + 'Shoo: back', x + w / 2, y + h - 9, 2, 1, 'c');
 }
 function drawShed() {
   const w = Math.min(VW - 12, 214), rowH = 10, h = 22 + PRODK.length * rowH + 34;
@@ -2013,6 +2054,7 @@ function render() {
   if (dark === 1) g.drawImage(D12, 0, 0);
   else if (dark === 2) g.drawImage(D25, 0, 0);
   if (state === 'night') { g.drawImage(D50, 0, 0); drawHUD(); drawCard(); return; }
+  if (state === 'shopcat') { g.drawImage(D50, 0, 0); drawHUD(); drawShopCat(); return; }
   if (state === 'shop') { g.drawImage(D50, 0, 0); drawHUD(); drawShop(); return; }
   if (state === 'board') { g.drawImage(D50, 0, 0); drawHUD(); drawBoard(); return; }
   if (state === 'shed') { g.drawImage(D50, 0, 0); drawHUD(); drawShed(); return; }
@@ -2033,6 +2075,7 @@ let lastUse = '';
 function updateUseBtn() {
   let label = 'Use', idle = false;
   if (state === 'day') { const a = getAction(); label = a ? a.label : 'Use'; idle = !a; }
+  else if (state === 'shopcat') label = 'Select';
   else if (state === 'shop') label = 'Buy';
   else if (state === 'board') label = 'Take';
   else if (state === 'shed') label = 'Cook';
@@ -2051,6 +2094,7 @@ function primary() {
   au();
   if (state === 'title') { if (hasSave) loadGame(); else newGame(); }
   else if (state === 'night') continueCard();
+  else if (state === 'shopcat') openMenu('shop', SHOP_CATS[menuIdx].k);
   else if (state === 'shop') buy();
   else if (state === 'board') takeOrder();
   else if (state === 'shed') cook();
@@ -2063,7 +2107,8 @@ function primary() {
 function secondary() {
   au();
   if (state === 'title') newGame();
-  else if (state === 'shop' || state === 'board' || state === 'shed') { state = 'day'; sfx.tick(); }
+  else if (state === 'shop') openMenu('shopcat');
+  else if (state === 'shopcat' || state === 'board' || state === 'shed') { state = 'day'; sfx.tick(); }
   else if (state === 'day') shoo();
   else if (state === 'night') continueCard();
 }
@@ -2113,7 +2158,7 @@ wireBtn(itemBtn, third);
 cv.addEventListener('pointerdown', e => {
   au();
   const x = e.clientX / scale, y = e.clientY / scale;
-  if (state === 'shop' || state === 'board' || state === 'shed') {
+  if (state === 'shopcat' || state === 'shop' || state === 'board' || state === 'shed') {
     const hit = menuRows.find(([rx, ry, rw, rh]) => x >= rx && x < rx + rw && y >= ry && y < ry + rh);
     if (hit) { if (hit[4] === menuIdx) primary(); else { menuIdx = hit[4]; menuMsg = null; sfx.tick(); } }
   } else if (y < hudTop() + HUD_H + 2 && x > VW - 46 && x < VW - 33 && state !== 'title') toggleMusic();
