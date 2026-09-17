@@ -883,6 +883,7 @@ const CLIENTS = [
 
 let state = 'title', clock = 0, t = 0, day = 1, weather = 'sun', weatherNext = 'sun', noonDone = false;
 let farm = [], crows = [], animals = [], parts = [], texts = [], rings = [];
+let carriedAnimals = {}; // buildingKey -> queued batches [{kind,stage,growT}...] from a picked-up, stocked building
 let inv = null, coins = 0, can = 0, canMax = 10, sel = 'turnip', rep = 0, offers = [], orders = [], owned = {}, built = {}, shed = [];
 let music = true, musT = 2, musI = 0, holdUse = false;
 let flags = {}, msg = null, sleepArm = 0, menuIdx = 0, menuMsg = null, spawnT = 5, navT = 0;
@@ -910,6 +911,7 @@ function blankFarm() {
 function newGame() {
   blankFarm();
   animals = [];
+  carriedAnimals = {};
   inv = { basket: {} };
   for (const k of ITEMS) inv[k] = 0;
   for (const k of GOODSK) inv.basket[k] = 0;
@@ -990,6 +992,25 @@ function buyAnimal(kind) {
   animals.push({ kind, x: sx, y: sy, tx: sx, ty: sy, hx: x, hy: y, stage: 0, growT: 0,
     face: Math.random() < .5 ? 0 : 1, anim: Math.random() * 9, wait: Math.random() * 1.5 });
   return true;
+}
+// Picking up a stocked building carries its residents along instead of stranding them;
+// they're held here until the same kind of building is placed again, then respawn there.
+function bundleAnimals(x, y, building) {
+  const batch = animals.filter(a => a.hx === x && a.hy === y).map(a => ({ kind: a.kind, stage: a.stage, growT: a.growT }));
+  if (!batch.length) return;
+  animals = animals.filter(a => !(a.hx === x && a.hy === y));
+  (carriedAnimals[building] = carriedAnimals[building] || []).push(batch);
+}
+function placeAnimalBatch(building, x, y) {
+  const queue = carriedAnimals[building];
+  if (!queue || !queue.length) return 0;
+  const batch = queue.shift();
+  for (const b of batch) {
+    const sx = x * TS + 8 + (Math.random() * 10 - 5), sy = y * TS + 13 + (Math.random() * 6 - 3);
+    animals.push({ kind: b.kind, x: sx, y: sy, tx: sx, ty: sy, hx: x, hy: y, stage: b.stage, growT: b.growT,
+      face: Math.random() < .5 ? 0 : 1, anim: Math.random() * 9, wait: Math.random() * 1.5 });
+  }
+  return batch.length;
 }
 function updateAnimals(dt) {
   for (const a of animals) {
@@ -1172,7 +1193,7 @@ function storageOK() {
 function save() {
   try {
     if (!storageOK()) return;
-    const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals,
+    const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals,
       farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0, c.fed ? 1 : 0])) };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     hasSave = true;
@@ -1195,6 +1216,7 @@ function loadGame() {
     flags = d.flags || {}; owned = d.owned || {}; built = d.built || {}; shed = d.shed || [];
     weather = d.weather || 'sun'; weatherNext = d.weatherNext || 'sun';
     animals = d.animals || (d.chickens ? d.chickens.map(c => ({ ...c, kind: 'chicken' })) : []);
+    carriedAnimals = d.carriedAnimals || {};
     for (const a of animals) { if (!a.kind) a.kind = 'chicken'; if (typeof a.tx !== 'number') { a.tx = a.x; a.ty = a.y; } a.anim = Math.random() * 9; a.wait = Math.random() * 1.5; }
     if (typeof d.music === 'boolean') music = d.music;
     for (const k of ITEMS) if (typeof inv[k] !== 'number') inv[k] = 0;
@@ -1286,9 +1308,10 @@ function actionAt(tx, ty) {
       inv.feed--; c.fed = true; flags.fed = true; sfx.plant(); updateItemBtn();
       texts.push({ s: 'Fed!', x: tx * TS + 8, y: ty * TS - 4, life: 1 });
     }};
-    if (n === 0) return { label: 'Pick up', fn: () => { inv[c.obj]++; c.obj = null; c.fed = false; sfx.tick(); updateItemBtn(); } };
-    const animalWord = n === 1 ? animalDef.animalName.toLowerCase() : animalDef.animalPlural;
-    return { label: c.fed ? 'Fed' : 'Look', fn: () => say(c.fed ? 'This ' + animalDef.buildingName.toLowerCase() + ' is fed for today' : n + ' ' + animalWord + ' need' + (n === 1 ? 's' : '') + ' feed', 2.2) };
+    return { label: n > 0 ? 'Move (' + n + ')' : 'Pick up', fn: () => {
+      if (n > 0) bundleAnimals(tx, ty, c.obj);
+      inv[c.obj]++; c.obj = null; c.fed = false; sfx.tick(); updateItemBtn();
+    }};
   }
   if (MACH[c.obj]) return { label: 'Pick up', fn: () => { inv[c.obj]++; c.obj = null; c.seed = null; sfx.tick(); updateItemBtn(); } };
   if (c.crop) {
@@ -1299,7 +1322,8 @@ function actionAt(tx, ty) {
   const placeable = !!MACH[sel];
   if (c.soil) {
     if (placeable && inv[sel] > 0 && sel !== 'drill') return { label: 'Place', fn: () => {
-      c.obj = sel; c.seed = null; inv[sel]--; sfx.plant(); if (ANIMAL_BUILDING_SET.has(sel)) flags.animalBuildingPlaced = true;
+      c.obj = sel; c.seed = null; inv[sel]--; sfx.plant();
+      if (ANIMAL_BUILDING_SET.has(sel)) { flags.animalBuildingPlaced = true; placeAnimalBatch(sel, tx, ty); }
       if (!inv[sel]) cycleItem(); updateItemBtn();
     }};
     if (!placeable && inv[sel] > 0) return { label: 'Plant', fn: () => plant(c) };
@@ -1309,7 +1333,11 @@ function actionAt(tx, ty) {
   if (placeable && inv[sel] > 0) return { label: 'Place', fn: () => {
     c.obj = sel; c.seed = null; inv[sel]--; sfx.plant();
     if (sel === 'drill') say('Face the drill holding seeds to load it', 3);
-    if (ANIMAL_BUILDING_SET.has(sel)) { flags.animalBuildingPlaced = true; say('Check the crate\'s animal shop, then feed it here', 3); }
+    if (ANIMAL_BUILDING_SET.has(sel)) {
+      flags.animalBuildingPlaced = true;
+      const moved = placeAnimalBatch(sel, tx, ty);
+      say(moved ? 'Moved right in!' : 'Check the crate\'s animal shop, then feed it here', 3);
+    }
     if (!inv[sel]) cycleItem();
     updateItemBtn();
   }};
@@ -1733,12 +1761,31 @@ function drawRowLines(cx, cy) {
 }
 // Decorative (non-solid) post-and-rail fence around each animal building's roaming yard,
 // matching the wander box in updateAnimals() with a small margin so animals don't clip it.
+function hash2(x, y) {
+  let h = Math.imul(x, 374761393) + Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) % 100;
+}
 function drawAnimalFences(cx, cy) {
   for (let y = 0; y < WR; y++) for (let x = 0; x < WC; x++) {
     if (!ANIMAL_BUILDING_SET.has(farm[y][x].obj)) continue;
     const hx = x * TS + 8, hy = y * TS + 13;
     const x0 = hx - 30, x1 = hx + 30, y0 = hy - 21, y1 = hy + 21;
     if (x1 < cx - 8 || x0 > cx + VW + 8 || y1 < cy - 8 || y0 > cy + VH + 8) continue;
+    // worn, grazed-over ground inside the yard — sparse dirt speckle, denser near the building
+    g.fillStyle = SOI[2];
+    for (let py = y0 + 1; py < y1; py++) for (let px = x0 + 1; px < x1; px++) {
+      const dx = (px - hx) / 30, dy = (py - hy) / 21, d2 = dx * dx + dy * dy;
+      if (d2 > 1) continue;
+      const h = hash2(px, py);
+      if (d2 < .5 ? h < 22 : h < 8) g.fillRect(px, py, 1, 1);
+    }
+    g.fillStyle = SOI[1];
+    for (let py = y0 + 1; py < y1; py++) for (let px = x0 + 1; px < x1; px++) {
+      const dx = (px - hx) / 30, dy = (py - hy) / 21, d2 = dx * dx + dy * dy;
+      if (d2 > .45) continue;
+      if (hash2(px + 1000, py + 1000) < 9) g.fillRect(px, py, 1, 1);
+    }
     const gateX0 = hx - 5, gateX1 = hx + 5;
     g.fillStyle = WD[0];
     for (let px = x0; px <= x1; px++) {
