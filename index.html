@@ -362,17 +362,7 @@ const S = {
     "..0.0...",
     ".00000..",
     "..000..."], WD),
-  house: spr([
-    "....000000000....",
-    "...02222222220...",
-    "..0222222222220..",
-    ".022222222222220.",
-    "022222222222222220",
-    "0233211330331123320",
-    "0233211330331123320",
-    "0111111330331111110",
-    "0111111111111111110",
-    "0...000....000...0"], WD)
+
 };
 
 const COMMON = [
@@ -469,12 +459,12 @@ function wrap(s, max) {
 /* ================= map ================= */
 const STATIC = {};
 const put = (x0, y0, w, h, type) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) STATIC[x + ',' + y] = type; };
-put(2, 1, 3, 2, 'shack');
+const FARM_GATE_TX = 3, FARM_GATE_TY = 0;
+put(FARM_GATE_TX, FARM_GATE_TY, 1, 1, 'gate');
 put(5, 2, 1, 1, 'bin');
 put(1, 4, 1, 1, 'crate');
 put(3, 5, 1, 1, 'board');
 put(6, 4, 1, 1, 'box');
-put(7, 3, 1, 1, 'gate');
 put(1, 14, 3, 3, 'pond');
 const TREES = [[1, 19], [4, 19], [2, 22], [5, 23], [1, 26], [4, 27], [2, 30], [5, 31], [1, 33], [6, 33]];
 for (const [x, y] of TREES) put(x, y, 1, 1, 'tree');
@@ -486,6 +476,117 @@ function rng(s) { return () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.im
 
 const bg = document.createElement('canvas'); bg.width = WW; bg.height = WH;
 const POND = { x: TS, y: 14 * TS, w: 48, h: 48 };
+// Shared pixel-art brushes keep both areas on the same palette and pixel grid.
+function drawFarmFence(b, width, height, gateX = null, gateEdge = 'bottom') {
+  const R = (c, x, y, w, h) => { b.fillStyle = WD[c]; b.fillRect(x, y, w, h); };
+
+  const clipGate = () => {
+    b.beginPath(); b.rect(0, 0, gateX, height); b.rect(gateX + TS, 0, width - gateX - TS, height); b.clip();
+  };
+  b.save();
+  if (gateX !== null && gateEdge === 'top') clipGate();
+  const fy = 4;
+  R(0, 0, fy + 3, width, 1); R(3, 0, fy + 4, width, 1); R(0, 0, fy + 5, width, 1); R(0, 0, fy + 8, width, 1); R(3, 0, fy + 9, width, 1); R(0, 0, fy + 10, width, 1);
+  for (let x = 2; x < width; x += 12) { R(0, x, fy, 4, 13); R(2, x + 1, fy + 1, 2, 11); R(3, x + 1, fy + 1, 1, 11); }
+  b.restore();
+  b.save();
+  if (gateX !== null && gateEdge === 'bottom') clipGate();
+  const by = height - 12;
+  R(0, 0, by + 2, width, 1); R(3, 0, by + 3, width, 1); R(0, 0, by + 4, width, 1); R(0, 0, by + 7, width, 1); R(3, 0, by + 8, width, 1); R(0, 0, by + 9, width, 1);
+  for (let x = 2; x < width; x += 12) { R(0, x, by - 1, 4, 13); R(2, x + 1, by, 2, 11); R(3, x + 1, by, 1, 11); }
+  b.restore();
+  for (const sx of [4, width - 10]) {
+    R(0, sx + 2, 14, 1, height - 26); R(0, sx + 4, 14, 1, height - 26); R(3, sx + 3, 14, 1, height - 26);
+    for (let y = 16; y < height - 14; y += 12) { R(0, sx, y, 7, 4); R(2, sx + 1, y + 1, 5, 2); }
+  }
+
+}
+function drawOpenGate(b, x, y) {
+  const R = (c, dx, dy, w, h) => { b.fillStyle = WD[c]; b.fillRect(x + dx, y + dy, w, h); };
+  // Stout jambs and a gate leaf swung alongside the path keep the opening clear.
+  for (const dx of [-4, TS]) {
+    R(0, dx, 0, 4, 15); R(2, dx + 1, 1, 2, 13); R(3, dx + 1, 1, 1, 12);
+    R(3, dx, 0, 4, 1);
+  }
+  R(0, -4, 12, 3, 13); R(2, -3, 13, 1, 11);
+  R(0, -6, 23, 5, 3); R(3, -5, 24, 3, 1);
+}
+function drawCottage(b, hx, hy, SGR) {
+  let C = SGR;
+  const use = q => { C = q; };
+  const R = (c, x, y, w, h) => { b.fillStyle = C[c]; b.fillRect(x, y, w, h); };
+  use(SGR);
+  b.fillStyle = C[2];
+  for (let y = hy + 30; y < hy + 36; y++) for (let x = hx - 2; x < hx + 50; x++) if ((x + y) % 2 === 0) b.fillRect(x, y, 1, 1);
+  use(WD);
+  R(0, hx + 34, hy - 12, 6, 12); R(2, hx + 35, hy - 11, 4, 11); R(3, hx + 35, hy - 11, 1, 11);
+  for (let i = 0; i < 18; i++) {
+    const w = 10 + i * 2, x0 = hx + 24 - w / 2;
+    R(0, x0 - 1, hy - 14 + i, w + 2, 1);
+    b.fillStyle = C[(i % 4 === 3) ? 0 : 2];
+    for (let xx = x0; xx < x0 + w; xx++) if (i % 4 === 3 || (xx + i) % 3) b.fillRect(xx, hy - 14 + i, 1, 1);
+    b.fillStyle = C[3];
+    for (let xx = x0; xx < x0 + w; xx++) if (i % 4 === 0 && (xx + i) % 3 === 0) b.fillRect(xx, hy - 14 + i, 1, 1);
+  }
+  R(0, hx - 1, hy + 4, 50, 1);
+  use(HS);
+  R(0, hx + 2, hy + 5, 44, 27); R(3, hx + 3, hy + 5, 42, 26);
+  for (let yy = hy + 8; yy < hy + 31; yy += 3) R(2, hx + 3, yy, 42, 1);
+  R(1, hx + 3, hy + 5, 1, 26); R(1, hx + 44, hy + 5, 1, 26);
+  R(0, hx + 19, hy + 14, 11, 18); R(1, hx + 20, hy + 15, 9, 17); R(2, hx + 20, hy + 15, 1, 17); R(3, hx + 26, hy + 23, 1, 2);
+  for (const wx of [hx + 6, hx + 34]) {
+    R(0, wx, hy + 11, 9, 9); R(2, wx + 1, hy + 12, 7, 7); R(3, wx + 1, hy + 12, 3, 3);
+    R(0, wx + 4, hy + 11, 1, 9); R(0, wx, hy + 15, 9, 1);
+  }
+
+}
+function drawGardenTree(b, x, y, SGR, STR) {
+  let C = SGR;
+  const use = q => { C = q; };
+  const R = (c, x, y, w, h) => { b.fillStyle = C[c]; b.fillRect(x, y, w, h); };
+  const dot = (c, x, y) => R(c, x, y, 1, 1);
+    use(SGR);
+    b.fillStyle = C[2];
+    for (let yy = -2; yy <= 2; yy++) for (let xx = -9; xx <= 9; xx++)
+      if (xx * xx / 81 + yy * yy / 4 <= 1 && (x + xx + y + yy) % 2 === 0) b.fillRect(x + xx, y + yy, 1, 1);
+    use(WD);
+    R(0, x - 3, y - 10, 6, 10); R(1, x - 2, y - 10, 4, 10); R(2, x - 2, y - 10, 1, 10);
+    use(STR);
+    const lobes = [[0, -19, 9], [-7, -13, 7], [7, -13, 7], [0, -12, 8]];
+    const inC = (qx, qy) => lobes.some(([lx, ly, lr]) => {
+      const dx = qx - (x + lx), dy = (qy - (y + ly)) * 1.12;
+      return dx * dx + dy * dy <= lr * lr;
+    });
+    for (let qy = y - 30; qy <= y - 3; qy++) for (let qx = x - 17; qx <= x + 17; qx++) {
+      if (!inC(qx, qy)) continue;
+      const outline = !inC(qx - 1, qy) || !inC(qx + 1, qy) || !inC(qx, qy - 1) || !inC(qx, qy + 1);
+      let c;
+      if (outline) c = 0;
+      else {
+        const rel = (qy - (y - 28)) / 25;
+        c = rel < .32 ? 3 : rel < .62 ? ((qx + qy) % 2 ? 2 : 3) : rel < .85 ? ((qx + qy) % 2 ? 1 : 2) : 1;
+        if (rel < .5 && qx < x - 4 && (qx + qy) % 3) c = 3;
+      }
+      dot(c, qx, qy);
+    }
+}
+function drawWaySign(b, x, y, label, direction) {
+  const rect = (c, dx, dy, w, h) => { b.fillStyle = WD[c]; b.fillRect(x + dx, y + dy, w, h); };
+  rect(0, -2, -9, 4, 20); rect(2, -1, -8, 2, 18); rect(3, -1, -8, 1, 17);
+  const width = label.length * 4 + 14, left = -Math.floor(width / 2);
+  rect(0, left, -15, width, 12); rect(2, left + 1, -14, width - 2, 10);
+  rect(3, left + 1, -14, width - 2, 1); rect(1, left + 1, -5, width - 2, 1);
+  // Use the game's own 3x5 lettering even on cached background canvases.
+  b.fillStyle = WD[0];
+  for (let i = 0; i < label.length; i++) for (let row = 0; row < 5; row++)
+    for (let col = 0; col < 3; col++) if (F[label[i]][row] & (1 << (2 - col)))
+      b.fillRect(x + left + 3 + i * 4 + col, y - 12 + row, 1, 1);
+  const ax = left + width - 7;
+  rect(0, ax + 2, -12, 1, 5);
+  for (let i = 0; i < 3; i++) rect(0, ax + i, direction > 0 ? -10 + i : -10 - i, 5 - i * 2, 1);
+  rect(3, left + 1, -12, 1, 1);
+}
+
 function buildBg(season) {
   const SGR = season ? season.gr : GR, STR = season ? season.tr : TR, SFL = season ? season.fl : '#f2a4c0';
   const snow = season === SEASONPAL[3];
@@ -538,9 +639,10 @@ function buildBg(season) {
   // dirt path
   use(SOI);
   const inPath = (x, y) =>
+    (x >= FARM_GATE_TX * TS + 2 && x < (FARM_GATE_TX + 1) * TS - 2 && y >= 0 && y < 3 * TS + 13) ||
     (x >= 7 * TS + 2 && x < 8 * TS - 2 && y >= 3 * TS + 4 && y < WH - 14) ||
     (y >= 3 * TS + 4 && y < 3 * TS + 13 && x >= 2 * TS + 6 && x < 8 * TS - 2);
-  for (let y = 3 * TS; y < WH - 12; y++) for (let x = 2 * TS; x < 8 * TS; x++) {
+  for (let y = FARM_GATE_TY * TS; y < WH - 12; y++) for (let x = 2 * TS; x < 8 * TS; x++) {
     if (!inPath(x, y)) continue;
     const edge = !inPath(x - 1, y) || !inPath(x + 1, y) || !inPath(x, y - 1) || !inPath(x, y + 1);
     const edge2 = !inPath(x - 2, y) || !inPath(x + 2, y) || !inPath(x, y - 2) || !inPath(x, y + 2);
@@ -562,44 +664,11 @@ function buildBg(season) {
   for (let y = fy0; y <= fy1; y += 4) { b.fillRect(fx0, y, 1, 2); b.fillRect(fx1, y, 1, 2); }
   for (let y = fy0; y < fy1; y += TS * 4) { R(0, fx0 - 1, y - 4, 2, 9); R(2, fx0 - 1, y - 3, 1, 7); }
 
-  // fence
-  use(WD);
-  const fy = 4;
-  R(0, 0, fy + 3, WW, 1); R(3, 0, fy + 4, WW, 1); R(0, 0, fy + 5, WW, 1); R(0, 0, fy + 8, WW, 1); R(3, 0, fy + 9, WW, 1); R(0, 0, fy + 10, WW, 1);
-  for (let x = 2; x < WW; x += 12) { R(0, x, fy, 4, 13); R(2, x + 1, fy + 1, 2, 11); R(3, x + 1, fy + 1, 1, 11); }
-  const by = WH - 12;
-  R(0, 0, by + 2, WW, 1); R(3, 0, by + 3, WW, 1); R(0, 0, by + 4, WW, 1); R(0, 0, by + 7, WW, 1); R(3, 0, by + 8, WW, 1); R(0, 0, by + 9, WW, 1);
-  for (let x = 2; x < WW; x += 12) { R(0, x, by - 1, 4, 13); R(2, x + 1, by, 2, 11); R(3, x + 1, by, 1, 11); }
-  for (const sx of [4, WW - 10]) {
-    R(0, sx + 2, 14, 1, WH - 26); R(0, sx + 4, 14, 1, WH - 26); R(3, sx + 3, 14, 1, WH - 26);
-    for (let y = 16; y < WH - 14; y += 12) { R(0, sx, y, 7, 4); R(2, sx + 1, y + 1, 5, 2); }
-  }
+  drawFarmFence(b, WW, WH, FARM_GATE_TX * TS, 'top');
+  drawOpenGate(b, FARM_GATE_TX * TS, 4);
 
-  // shack
-  use(SGR);
-  const hx = 2 * TS, hy = TS;
-  b.fillStyle = C[2];
-  for (let y = hy + 30; y < hy + 36; y++) for (let x = hx - 2; x < hx + 50; x++) if ((x + y) % 2 === 0) b.fillRect(x, y, 1, 1);
-  use(WD);
-  R(0, hx + 34, hy - 12, 6, 12); R(2, hx + 35, hy - 11, 4, 11); R(3, hx + 35, hy - 11, 1, 11);
-  for (let i = 0; i < 18; i++) {
-    const w = 10 + i * 2, x0 = hx + 24 - w / 2;
-    R(0, x0 - 1, hy - 14 + i, w + 2, 1);
-    b.fillStyle = C[(i % 4 === 3) ? 0 : 2];
-    for (let xx = x0; xx < x0 + w; xx++) if (i % 4 === 3 || (xx + i) % 3) b.fillRect(xx, hy - 14 + i, 1, 1);
-    b.fillStyle = C[3];
-    for (let xx = x0; xx < x0 + w; xx++) if (i % 4 === 0 && (xx + i) % 3 === 0) b.fillRect(xx, hy - 14 + i, 1, 1);
-  }
-  R(0, hx - 1, hy + 4, 50, 1);
-  use(HS);
-  R(0, hx + 2, hy + 5, 44, 27); R(3, hx + 3, hy + 5, 42, 26);
-  for (let yy = hy + 8; yy < hy + 31; yy += 3) R(2, hx + 3, yy, 42, 1);
-  R(1, hx + 3, hy + 5, 1, 26); R(1, hx + 44, hy + 5, 1, 26);
-  R(0, hx + 19, hy + 14, 11, 18); R(1, hx + 20, hy + 15, 9, 17); R(2, hx + 20, hy + 15, 1, 17); R(3, hx + 26, hy + 23, 1, 2);
-  for (const wx of [hx + 6, hx + 34]) {
-    R(0, wx, hy + 11, 9, 9); R(2, wx + 1, hy + 12, 7, 7); R(3, wx + 1, hy + 12, 3, 3);
-    R(0, wx + 4, hy + 11, 1, 9); R(0, wx, hy + 15, 9, 1);
-  }
+  // The path continues through an open timber gate; the sign sits beside it.
+  drawWaySign(b, FARM_GATE_TX * TS + 36, 30, 'HOME', -1);
 
   // shipping bin (5,2)
   use(WD);
@@ -629,15 +698,6 @@ function buildBg(season) {
   R(0, ox + 6, oy + 9, 4, 3); R(1, ox + 7, oy + 10, 2, 1);
   R(0, ox + 7, oy - 4, 2, 7); R(0, ox + 9, oy - 4, 5, 3); R(3, ox + 10, oy - 3, 3, 1);
 
-  // path gate to the homestead (7,3) — a signpost with a short dirt path leading off
-  use(WD);
-  const gx = 7 * TS, gy = 3 * TS;
-  R(0, gx + 6, gy - 2, 2, 15); R(1, gx + 7, gy - 2, 1, 15);
-  R(0, gx, gy - 9, 15, 7); R(2, gx + 1, gy - 8, 13, 5); R(3, gx + 1, gy - 8, 13, 1);
-  R(0, gx + 4, gy - 6, 7, 1); R(0, gx + 4, gy - 4, 5, 1);
-  use(SOI);
-  for (let i = -3; i < 22; i++) { const w = 10 - Math.abs(i) / 3 | 0; R(3, gx + 8 - w / 2, gy + 13 + i, Math.max(2, w), 1); }
-
   // pond with a dithered shore
   use(WAT);
   const px = POND.x, py = POND.y, pw = POND.w, ph = POND.h;
@@ -658,34 +718,7 @@ function buildBg(season) {
   for (const [x, y] of [[4, 8], [40, 36], [6, 38]]) { R(0, px + x, py + y - 5, 1, 6); R(0, px + x + 2, py + y - 7, 1, 8); R(1, px + x + 2, py + y - 8, 1, 2); }
   use(SGR);
 
-  // trees
-  for (const [tx, ty] of TREES) {
-    use(SGR);
-    const x = tx * TS + 8, y = ty * TS + 14;
-    b.fillStyle = C[2];
-    for (let yy = -2; yy <= 2; yy++) for (let xx = -9; xx <= 9; xx++)
-      if (xx * xx / 81 + yy * yy / 4 <= 1 && (x + xx + y + yy) % 2 === 0) b.fillRect(x + xx, y + yy, 1, 1);
-    use(WD);
-    R(0, x - 3, y - 10, 6, 10); R(1, x - 2, y - 10, 4, 10); R(2, x - 2, y - 10, 1, 10);
-    use(STR);
-    const lobes = [[0, -19, 9], [-7, -13, 7], [7, -13, 7], [0, -12, 8]];
-    const inC = (qx, qy) => lobes.some(([lx, ly, lr]) => {
-      const dx = qx - (x + lx), dy = (qy - (y + ly)) * 1.12;
-      return dx * dx + dy * dy <= lr * lr;
-    });
-    for (let qy = y - 30; qy <= y - 3; qy++) for (let qx = x - 17; qx <= x + 17; qx++) {
-      if (!inC(qx, qy)) continue;
-      const outline = !inC(qx - 1, qy) || !inC(qx + 1, qy) || !inC(qx, qy - 1) || !inC(qx, qy + 1);
-      let c;
-      if (outline) c = 0;
-      else {
-        const rel = (qy - (y - 28)) / 25;
-        c = rel < .32 ? 3 : rel < .62 ? ((qx + qy) % 2 ? 2 : 3) : rel < .85 ? ((qx + qy) % 2 ? 1 : 2) : 1;
-        if (rel < .5 && qx < x - 4 && (qx + qy) % 3) c = 3;
-      }
-      dot(c, qx, qy);
-    }
-  }
+  for (const [tx, ty] of TREES) drawGardenTree(b, tx * TS + 8, ty * TS + 14, SGR, STR);
   if (snow) {
     b.fillStyle = '#f8fbff';
     for (let i = 0; i < 900; i++) { const x = r() * WW | 0, y = r() * WH | 0; b.fillRect(x, y, 1, 1); }
@@ -1012,7 +1045,7 @@ function blankDefGrid() {
   }
 }
 let carriedAnimals = {}; // buildingKey -> queued batches [{kind,stage,growT}...] from a picked-up, stocked building
-let flowerSpots = [], critters = [];
+let flowerSpots = [], critters = [], defFlowerSpots = [], defCritters = [];
 let inv = null, coins = 0, can = 0, canMax = 10, sel = 'turnip', rep = 0, offers = [], orders = [], owned = {}, built = {}, shed = [];
 let music = true, holdUse = false;
 let flags = {}, msg = null, sleepArm = 0, menuIdx = 0, menuMsg = null, spawnT = 5, navT = 0;
@@ -1040,6 +1073,7 @@ function blankFarm() {
 function newGame() {
   blankFarm();
   blankDefGrid();
+  onDefMap = false;
   animals = [];
   carriedAnimals = {};
   inv = { basket: {} };
@@ -1064,7 +1098,9 @@ function refreshBg() {
   const sn = seasonOf(day);
   bgSeason = sn;
   buildBg(SEASONPAL[sn]);
-  spawnCritters();
+  buildDefBg(SEASONPAL[sn]);
+  critters = spawnCritters(flowerSpots);
+  defCritters = spawnCritters(defFlowerSpots);
 }
 function startDay(first) {
   state = 'day'; t = 0; crows = []; parts = []; texts = []; rings = []; noonDone = false; raid = null;
@@ -1083,6 +1119,11 @@ function startDay(first) {
   offers = offers.filter(o => o.posted >= day - 2);
   while (offers.length < 3) offers.push(makeOffer());
   player.x = 56; player.y = 62; player.fx = 0; player.fy = 1;
+  player.act = 0;
+  if (onDefMap) {
+    defPlayer.x = HOUSE_CX; defPlayer.y = (HOUSE_TY + HOUSE_TH) * TS + 10;
+    defPlayer.fx = 0; defPlayer.fy = 1; defSnapCam();
+  }
   can = canMax; dayStats = { earned: 0 }; spawnT = 6; sleepArm = 0;
   autoLines = first ? [] : runMachines();
   if (!first) autoLines.push(...runAnimals());
@@ -1324,7 +1365,7 @@ function storageOK() {
 function save() {
   try {
     if (!storageOK()) return;
-    const data = { day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals,
+    const data = { onDefMap, day, coins, canMax, inv, sel, flags, rep, offers, orders, owned, built, shed, weather, weatherNext, music, animals, carriedAnimals,
       farm: farm.map(row => row.map(c => [c.soil ? 1 : 0, c.wet ? 1 : 0, c.obj || 0, c.hp, c.crop ? c.crop.type : 0, c.crop ? c.crop.stage : 0, c.seed || 0, c.fed ? 1 : 0])),
       defGrid: defGrid.map(row => row.map(c => c.obj || 0)) };
     localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1349,6 +1390,12 @@ function loadGame() {
     blankDefGrid();
     if (d.defGrid) d.defGrid.forEach((row, y) => row.forEach((o, x) => { if (defGrid[y] && defGrid[y][x]) defGrid[y][x].obj = o || null; }));
     ({ day, coins, canMax, inv, sel, rep, offers, orders } = d);
+    onDefMap = !!d.onDefMap;
+    // Return older placements that now overlap the permanent garden.
+    for (const o of DEF_SCENERY) {
+      const cell = defGrid[o.y][o.x];
+      if (TOWER_SET.has(cell.obj)) { inv[cell.obj] = (inv[cell.obj] || 0) + 1; cell.obj = null; }
+    }
     flags = d.flags || {}; owned = d.owned || {}; built = d.built || {}; shed = d.shed || [];
     weather = d.weather || 'sun'; weatherNext = d.weatherNext || 'sun';
     animals = d.animals || (d.chickens ? d.chickens.map(c => ({ ...c, kind: 'chicken' })) : []);
@@ -1413,7 +1460,6 @@ function getAction() {
 function actionAt(tx, ty) {
   if (tx < 0 || ty < 0 || tx >= WC || ty >= WR) return null;
   const st = STATIC[tx + ',' + ty];
-  if (st === 'shack') return { label: 'Sleep', fn: trySleep };
   if (st === 'bin') return { label: 'Sell', fn: sell };
   if (st === 'crate') return { label: 'Shop', fn: () => openMenu('shopcat') };
   if (st === 'gate') return { label: 'Go home', fn: travelToHomestead };
@@ -1589,7 +1635,7 @@ function shoo() {
   sfx.shoo();
   let n = 0;
   for (const cr of crows) {
-    if (cr.st === 'flee') continue;
+    if (cr.raid || cr.st === 'flee') continue;
     const dx = cr.x - ox, dy = (cr.y - oy) / .75;
     if (dx * dx + dy * dy > R * R) continue;
     burst(cr.x, cr.y - cr.alt - 3, 5, 1, 50, 15, CRW);
@@ -1682,9 +1728,8 @@ function flee(cr, fx, fy) {
 }
 // Purely ambient wildlife — bees and butterflies that drift between flower spots.
 // No gameplay effect; they exist for atmosphere only.
-function spawnCritters() {
-  critters = [];
-  const spots = flowerSpots.length ? flowerSpots : [[WW / 2, WH / 2]];
+function spawnCritters(spots) {
+  const critters = [];
   const pick = () => spots[Math.random() * spots.length | 0];
   for (let i = 0; i < 6; i++) {
     const [hx, hy] = pick();
@@ -1695,8 +1740,9 @@ function spawnCritters() {
     critters.push({ kind: 'butterfly', variant: Math.random() < .5 ? 1 : 2,
       x: hx, y: hy, tx: hx, ty: hy, wait: Math.random() * 2, phase: Math.random() * 10 });
   }
+  return critters;
 }
-function updateCritters(dt) {
+function updateCritters(dt, critters, flowerSpots, width, height) {
   for (const cr of critters) {
     cr.phase += dt;
     if (cr.kind === 'bee') {
@@ -1714,7 +1760,7 @@ function updateCritters(dt) {
           } else {
             cr.tx = cr.x + (Math.random() * 60 - 30); cr.ty = cr.y + (Math.random() * 40 - 20);
           }
-          cr.tx = Math.max(10, Math.min(WW - 10, cr.tx)); cr.ty = Math.max(24, Math.min(WH - 24, cr.ty));
+          cr.tx = Math.max(10, Math.min(width - 10, cr.tx)); cr.ty = Math.max(24, Math.min(height - 24, cr.ty));
           cr.wait = 1 + Math.random() * 2.5;
         }
       } else {
@@ -1761,13 +1807,10 @@ function burst(x, y, n, col, spread = 40, grav = 20, pal) {
   for (let i = 0; i < n; i++) parts.push({ x, y, vx: (Math.random() - .5) * spread, vy: (Math.random() - .8) * spread, life: .45 + Math.random() * .45, col, grav, pal });
 }
 
-/* ================= crow raid: winter defense night =================
-   Once a year, on one specific winter day, waves of many weak crows storm
-   the farm and towers (bought/placed exactly like machines) shoot them
-   down. Anything that reaches its target gets one peck in, same as an
-   ordinary crow, so an undefended farm genuinely loses crops that night.
-   Wave sizes and tower dmg/rate are tuned by an offline sim, not by feel —
-   see /tmp balance notes from the session that added this. */
+/* ================= defense night =================
+   Once each winter, four waves approach the homestead from every side.
+   Defenses protect the cottage; each crow that reaches it damages its HP.
+   The raid continues on either map, so leaving cannot pause the attack. */
 const RAID_SEASON = 3, RAID_DAY = 6, RAID_YEAR_DAYS = 48;
 const isRaidDay = d => seasonOf(d) === RAID_SEASON && seasonDay(d) === RAID_DAY;
 const raidYear = d => Math.floor((d - 1) / RAID_YEAR_DAYS);
@@ -1780,13 +1823,15 @@ const HOUSE_MAX_HP = 160, HOUSE_DMG_PER_LEAK = 4;
 const DEF_GATE_TX = Math.floor(DEF_WC / 2), DEF_GATE_TY = DEF_WR - 1;
 function travelToHomestead() {
   onDefMap = true;
+  parts = []; texts = []; rings = []; sleepArm = 0;
   defPlayer.x = DEF_GATE_TX * TS + 8; defPlayer.y = (DEF_GATE_TY - 1) * TS + 8; defPlayer.fx = 0; defPlayer.fy = 1;
   defSnapCam();
   sfx.tick();
 }
 function travelToFarm() {
   onDefMap = false;
-  player.x = 7 * TS + 8; player.y = 4 * TS + 8; player.fx = 0; player.fy = 1;
+  parts = []; texts = []; rings = []; sleepArm = 0;
+  player.x = FARM_GATE_TX * TS + 8; player.y = (FARM_GATE_TY + 1) * TS + 14; player.fx = 0; player.fy = 1;
   snapCam();
   sfx.tick();
 }
@@ -1794,7 +1839,7 @@ function defSolidTile(x, y) {
   if (x < 0 || y < 0 || x >= DEF_WC || y >= DEF_WR) return true;
   if (x <= 0 || y <= 0 || x >= DEF_WC - 1 || y >= DEF_WR - 1) return !(x === DEF_GATE_TX && y === DEF_GATE_TY);
   if (x >= HOUSE_TX && x < HOUSE_TX + HOUSE_TW && y >= HOUSE_TY && y < HOUSE_TY + HOUSE_TH) return true;
-  return TOWER_SET.has(defGrid[y][x].obj);
+  return DEF_SCENERY.some(o => o.x === x && o.y === y) || TOWER_SET.has(defGrid[y][x].obj);
 }
 function defBlocked(px, py) {
   for (const [ox, oy] of [[-4, -4], [4, -4], [-4, 0], [4, 0]]) {
@@ -1817,9 +1862,10 @@ function defActionAt(tx, ty) {
   if (tx === DEF_GATE_TX && ty === DEF_GATE_TY) return { label: 'Leave', fn: travelToFarm };
   if (tx >= HOUSE_TX && tx < HOUSE_TX + HOUSE_TW && ty >= HOUSE_TY && ty < HOUSE_TY + HOUSE_TH) {
     const hpNow = raid ? raid.hp : HOUSE_MAX_HP;
-    return { label: 'Look', fn: () => say('Your house. ' + hpNow + '/' + HOUSE_MAX_HP + ' HP' + (raid && raid.phase !== 'done' ? ' — hold them off!' : ''), 2.6) };
+    return { label: raid && raid.phase !== 'done' ? 'Defend' : 'Sleep', fn: () => { if (!raid || raid.phase === 'done') { trySleep(); return; } say('Your house. ' + hpNow + '/' + HOUSE_MAX_HP + ' HP' + (raid && raid.phase !== 'done' ? ' — hold them off!' : ''), 2.6); } };
   }
   if (tx <= 0 || ty <= 0 || tx >= DEF_WC - 1 || ty >= DEF_WR - 1) return null;
+  if (DEF_SCENERY.some(o => o.x === tx && o.y === ty)) return null;
   const c = defGrid[ty][tx];
   if (TOWER_SET.has(c.obj)) return { label: 'Pick up', fn: () => { inv[c.obj]++; c.obj = null; sfx.tick(); updateItemBtn(); } };
   if (TOWER_SET.has(sel) && inv[sel] > 0) return { label: 'Place', fn: () => {
@@ -1835,6 +1881,7 @@ function defTargetTile() {
   return [tx0, ty0];
 }
 function updateDefenseMap(dt) {
+  updateCritters(dt, defCritters, defFlowerSpots, DEF_WW, DEF_WH);
   let mx = jx, my = jy;
   if (keys.arrowleft || keys.a) mx -= 1;
   if (keys.arrowright || keys.d) mx += 1;
@@ -1854,7 +1901,6 @@ function updateDefenseMap(dt) {
   defPlayer.bob = defPlayer.moving ? -Math.round(Math.abs(Math.sin(defPlayer.step * 11)) * 3) : 0;
   const [ctx, cty] = defCamTarget(), k = Math.min(1, dt * 8);
   defCam.x += (ctx - defCam.x) * k; defCam.y += (cty - defCam.y) * k;
-  if (raid) { updateRaid(dt); updateRaidCrows(dt); updateTowers(dt); }
   if (t >= dayLen() && !(raid && raid.phase !== 'done')) endDay(true);
 }
 function startRaid() {
@@ -1883,8 +1929,8 @@ function finishRaid() {
   raid.phase = 'done';
 }
 function raidTargetPoint() {
-  const tx = Math.max(20, Math.min(WW - 20, HOUSE_CX + (Math.random() - .5) * 120));
-  const ty = Math.max(20, Math.min(WH - 20, HOUSE_CY + (Math.random() - .5) * 120));
+  const tx = HOUSE_CX + (Math.random() - .5) * (HOUSE_TW * TS - 8);
+  const ty = HOUSE_CY + (Math.random() - .5) * (HOUSE_TH * TS - 8);
   return [tx, ty];
 }
 function spawnRaidCrow() {
@@ -1892,8 +1938,8 @@ function spawnRaidCrow() {
   const side = Math.random() * 4 | 0;
   let x, y;
   if (side === 0) { x = tx + (Math.random() - .5) * 260; y = -20; }
-  else if (side === 1) { x = WW + 20; y = ty + (Math.random() - .5) * 260; }
-  else if (side === 2) { x = tx + (Math.random() - .5) * 260; y = WH + 20; }
+  else if (side === 1) { x = DEF_WW + 20; y = ty + (Math.random() - .5) * 260; }
+  else if (side === 2) { x = tx + (Math.random() - .5) * 260; y = DEF_WH + 20; }
   else { x = -20; y = ty + (Math.random() - .5) * 260; }
   crows.push({ x, y, tx, ty, st: 'raidfly', raid: true, hp: 2, maxHp: 2, alt: 30,
     face: x < tx ? 1 : 0, anim: Math.random() * 9, vx: 0, vy: 0, life: 0 });
@@ -2008,6 +2054,7 @@ const keys = {};
 let jx = 0, jy = 0;
 function solidTile(x, y) {
   if (x < 0 || y < 0 || x >= WC || y >= WR) return true;
+  if (x === FARM_GATE_TX && y === FARM_GATE_TY) return false;
   if (isBorder(x, y) || STATIC[x + ',' + y]) return true;
   const o = farm[y][x].obj;
   return o === 'rock' || !!MACH[o];
@@ -2049,7 +2096,17 @@ function update(dt) {
   if (state === 'shed') { menuNav(dt, PRODK.length); return; }
   if (state !== 'day') return;
   t += dt;
+  player.cd = Math.max(0, player.cd - dt);
+  player.flail = Math.max(0, player.flail - dt);
+  player.act = Math.max(0, player.act - dt);
+  sleepArm = Math.max(0, sleepArm - dt);
+  if (holdUse && player.act <= 0) {
+    const a = getAction();
+    if (a && REPEATABLE[a.label]) { player.act = .17; a.fn(); }
+  }
+
   if (isRaidDay(day) && !raid && t >= dayLen() * .62) { startRaid(); if (!onDefMap) travelToHomestead(); }
+  if (raid) { updateRaid(dt); updateRaidCrows(dt); updateTowers(dt); }
   if (onDefMap) { updateDefenseMap(dt); return; }
 
   let mx = jx, my = jy;
@@ -2069,22 +2126,15 @@ function update(dt) {
     player.step += dt;
     if (Math.random() < dt * 5) parts.push({ x: player.x + (Math.random() * 6 - 3), y: player.y, vx: 0, vy: -4, life: .3, col: 3, grav: 0, pal: SOI });
   }
+  if (my < 0 && player.x >= FARM_GATE_TX * TS + 4 && player.x <= (FARM_GATE_TX + 1) * TS - 4 && player.y <= 12) { travelToHomestead(); return; }
   player.bob = player.moving ? -Math.round(Math.abs(Math.sin(player.step * 11)) * 3) : 0;
-  player.cd = Math.max(0, player.cd - dt);
-  player.flail = Math.max(0, player.flail - dt);
-  player.act = Math.max(0, player.act - dt);
-  sleepArm = Math.max(0, sleepArm - dt);
-  if (holdUse && player.act <= 0) {
-    const a = getAction();
-    if (a && REPEATABLE[a.label]) { player.act = .17; a.fn(); }
-  }
 
   const [ctx, cty] = camTarget(), k = Math.min(1, dt * 8);
   cam.x += (ctx - cam.x) * k; cam.y += (cty - cam.y) * k;
 
   updateCrows(dt);
   updateAnimals(dt);
-  updateCritters(dt);
+  updateCritters(dt, critters, flowerSpots, WW, WH);
   if (!noonDone && clockMin() >= 780) {
     noonDone = true;
     const extra = [];
@@ -2234,31 +2284,81 @@ function drawDefCursor() {
   g.fillRect(x0, y1, L, 1); g.fillRect(x0, y1 - L + 1, 1, L);
   g.fillRect(x1 - L + 1, y1, L, 1); g.fillRect(x1, y1 - L + 1, 1, L);
 }
-function drawDefFence(cx, cy) {
-  g.fillStyle = WD[0];
-  for (let x = 0; x < DEF_WW; x += 8) {
-    if (x < cx - 8 || x > cx + VW + 8) continue;
-    if (Math.abs(x - DEF_GATE_TX * TS) > TS) { g.fillRect(x, 0, 3, 5); g.fillRect(x, DEF_WH - 5, 3, 5); }
+const DEF_SCENERY = [
+  ...[[3,3],[6,3],[15,3],[18,4],[2,8],[18,9],[3,13],[18,14],[3,18],[6,17],[15,18]]
+    .map(([x,y]) => ({x,y,kind:'tree'})),
+  ...[[5,5],[16,6],[2,11],[17,12],[5,16],[14,17],[8,4]]
+    .map(([x,y]) => ({x,y,kind:'rock'}))
+];
+const defBg = document.createElement('canvas'); defBg.width = DEF_WW; defBg.height = DEF_WH;
+let defTreeSprite;
+function buildDefBg(season) {
+  const b = defBg.getContext('2d'), r = rng(412), grass = season.gr;
+  b.fillStyle = grass[3]; b.fillRect(0, 0, DEF_WW, DEF_WH);
+  for (let i = 0; i < 55; i++) {
+    const x = r() * DEF_WW | 0, y = r() * DEF_WH | 0, rad = 8 + r() * 14;
+    b.fillStyle = grass[2];
+    for (let dy = -rad | 0; dy < rad; dy += 2) for (let dx = -rad | 0; dx < rad; dx += 2)
+      if (dx * dx + dy * dy < rad * rad && (dx + dy) % 4 === 0) b.fillRect(x + dx, y + dy, 1, 1);
   }
-  for (let y = 0; y < DEF_WH; y += 8) {
-    if (y < cy - 8 || y > cy + VH + 8) continue;
-    g.fillRect(0, y, 5, 3); g.fillRect(DEF_WW - 5, y, 5, 3);
+  for (let i = 0; i < 1000; i++) {
+    const x = 16 + r() * (DEF_WW - 32) | 0, y = 20 + r() * (DEF_WH - 40) | 0;
+    b.fillStyle = grass[i % 3 ? 2 : 1]; b.fillRect(x, y, 1, 1);
+    if (i % 7 === 0) { b.fillRect(x + 2, y - 2, 1, 3); b.fillRect(x + 4, y, 1, 1); }
   }
-  g.fillStyle = WD[2];
-  g.fillRect(0, DEF_GATE_TY * TS, DEF_GATE_TX * TS - 6, 1);
-  g.fillRect((DEF_GATE_TX + 1) * TS + 6, DEF_GATE_TY * TS, DEF_WW - (DEF_GATE_TX + 1) * TS - 6, 1);
+  // A worn loop leaves room to defend every side of the cottage.
+  const inPath = (x,y) => (Math.abs(x - HOUSE_CX) <= 6 && y >= 185) ||
+    (x >= 124 && x <= 212 && y >= 119 && y <= 213 && !(x > 135 && x < 201 && y > 130 && y < 202));
+  for (let y = 110; y < DEF_WH; y++) for (let x = 116; x < 220; x++) if (inPath(x,y)) {
+    if ((!inPath(x-1,y) || !inPath(x+1,y) || !inPath(x,y-1) || !inPath(x,y+1)) && (x+y)%2) continue;
+    b.fillStyle = SOI[r() < .09 ? 1 : 2]; b.fillRect(x,y,1,1);
+  }
+  defFlowerSpots = [];
+  for (const [cx,cy] of [[70,72],[261,70],[49,164],[283,187],[92,251],[250,262],[144,198],[193,198],[88,118],[244,120]]) {
+    for (let i = 0; i < 15; i++) {
+      const x = cx + (r() * 24 - 12 | 0), y = cy + (r() * 14 - 7 | 0);
+      if (inPath(x,y)) continue;
+      b.fillStyle = grass[0]; b.fillRect(x,y+1,1,3);
+      b.fillStyle = i % 3 === 0 ? '#fff4d6' : season.fl;
+      b.fillRect(x-1,y,3,1); b.fillRect(x,y-1,1,3);
+      b.fillStyle = i % 3 === 0 ? ACC : '#fff4d6'; b.fillRect(x,y,1,1);
+      defFlowerSpots.push([x,y]);
+    }
+  }
+  // Flat stepping stones and a timber doorstep lead directly to the sleeping door.
+  for (let y = 220; y < 312; y += 18) {
+    b.fillStyle = SOI[0]; b.fillRect(HOUSE_CX-4,y,8,3);
+    b.fillStyle = SOI[3]; b.fillRect(HOUSE_CX-3,y,6,2);
+  }
+  b.fillStyle = WD[0]; b.fillRect(HOUSE_CX-7,191,15,4);
+  b.fillStyle = WD[3]; b.fillRect(HOUSE_CX-6,191,13,1);
+  drawFarmFence(b, DEF_WW, DEF_WH, DEF_GATE_TX * TS);
+  drawWaySign(b, HOUSE_CX + 26, DEF_WH - 26, 'FARM', 1);
+  defTreeSprite = document.createElement('canvas'); defTreeSprite.width = 36; defTreeSprite.height = 36;
+  drawGardenTree(defTreeSprite.getContext('2d'), 18, 32, grass, season.tr);
+}
+function drawCritters(critters, cx, cy) {
+  if (state !== 'day') return;
+  for (const cr of critters) {
+    if (cr.x < cx - 10 || cr.x > cx + VW + 10 || cr.y < cy - 10 || cr.y > cy + VH + 10) continue;
+    let img;
+    if (cr.kind === 'bee') img = Math.floor(cr.phase * 10) % 2 ? S.bee1 : S.bee2;
+    else {
+      const flap = Math.floor(cr.phase * 6) % 2;
+      img = S[cr.variant === 1 ? (flap ? 'bfly1b' : 'bfly1a') : (flap ? 'bfly2b' : 'bfly2a')];
+    }
+    g.drawImage(img, Math.round(cr.x - img.width / 2), Math.round(cr.y - img.height / 2));
+  }
 }
 function drawDefenseMap() {
   const cx = Math.round(defCam.x), cy = Math.round(defCam.y);
   g.fillStyle = GR[3]; g.fillRect(0, 0, VW, VH);
   g.save(); g.translate(-cx, -cy);
-  g.fillStyle = GR[3]; g.fillRect(0, 0, DEF_WW, DEF_WH);
-  for (let i = 0; i < 260; i++) {
-    const hx = (i * 137) % DEF_WW, hy = (i * 271) % DEF_WH;
-    g.fillStyle = (i % 3 === 0) ? GR[2] : GR[1]; g.fillRect(hx, hy, 1, 1);
-  }
-  drawDefFence(cx, cy);
-  const list = [];
+  g.drawImage(defBg, 0, 0);
+  const list = DEF_SCENERY.map(o => ({ y: o.y * TS + 14, d: () => {
+    if (o.kind === 'tree') g.drawImage(defTreeSprite, o.x * TS + 8 - 18, o.y * TS + 14 - 32);
+    else g.drawImage(S.rock, o.x * TS + 2, o.y * TS + 6);
+  }}));
   for (let y = 0; y < DEF_WR; y++) for (let x = 0; x < DEF_WC; x++) {
     const c = defGrid[y][x];
     if (!TOWER_SET.has(c.obj)) continue;
@@ -2277,12 +2377,12 @@ function drawDefenseMap() {
   }
   const hpx = HOUSE_TX * TS, hpy = HOUSE_TY * TS;
   list.push({ y: hpy + HOUSE_TH * TS, d: () => {
-    defShadow(hpx + HOUSE_TW * TS / 2, hpy + HOUSE_TH * TS - 2, 26);
-    g.drawImage(S.house, hpx + HOUSE_TW * TS / 2 - S.house.width / 2, hpy + HOUSE_TH * TS - S.house.height - 4);
+    drawCottage(g, hpx, hpy + 16, SEASONPAL[seasonOf(day)].gr);
   }});
   list.push({ y: defPlayer.y, d: drawDefPlayer });
   list.sort((a, b) => a.y - b.y).forEach(e => e.d());
   drawDefCursor();
+  drawCritters(defCritters, cx, cy);
   const flying = crows.filter(c => c.raid);
   for (const cr of flying) defShadow(cr.x, cr.y - 1, 5);
   for (const cr of flying) {
@@ -2292,7 +2392,7 @@ function drawDefenseMap() {
   for (const p of parts) { g.fillStyle = (p.pal || P)[p.col]; g.fillRect(Math.round(p.x), Math.round(p.y), 1, p.rain ? 3 : 1); }
   for (const x of texts) { if (x.s[0] === '+' && x.s[1] === '$') { const o = P[3]; P[3] = ACC; txtO(x.s, x.x, x.y, 3, 1, 'c', 0); P[3] = o; } else txtO(x.s, x.x, x.y, 3, 1, 'c', 0); }
   if (raid && raid.phase !== 'done') {
-    const bw = 30, bx = HOUSE_CX - bw / 2, by = hpy + HOUSE_TH * TS - S.house.height - 12;
+    const bw = 30, bx = HOUSE_CX - bw / 2, by = hpy - 8;
     g.fillStyle = P[0]; g.fillRect(bx - 1, by - 1, bw + 2, 5);
     const frac = raid.hp / raid.maxHp;
     g.fillStyle = frac > .5 ? '#5a9c4a' : frac > .25 ? '#c99a2e' : '#c0392b';
@@ -2400,24 +2500,13 @@ function drawWorld() {
   list.sort((a, b) => a.y - b.y).forEach(e => e.d());
   drawRowLines(cx, cy);
   if (state === 'day') drawCursor();
-  const flying = crows.filter(c => c.st !== 'eat');
+  const flying = crows.filter(c => !c.raid && c.st !== 'eat');
   for (const cr of flying) shadow(cr.x, cr.y - 1, 5);
   for (const cr of flying) {
     const fr = Math.floor(cr.anim * (cr.st === 'flee' ? 14 : 9)) % 2 ? S.f1 : S.f2;
     g.drawImage(fr[cr.face], Math.round(cr.x - 5), Math.round(cr.y - cr.alt - 6));
   }
-  if (state === 'day') for (const cr of critters) {
-    if (cr.x < cx - 10 || cr.x > cx + VW + 10 || cr.y < cy - 10 || cr.y > cy + VH + 10) continue;
-    if (cr.kind === 'bee') {
-      const fr = Math.floor(cr.phase * 10) % 2 ? S.bee1 : S.bee2;
-      g.drawImage(fr, Math.round(cr.x - 1.5), Math.round(cr.y - 2));
-    } else {
-      const flap = Math.floor(cr.phase * 6) % 2;
-      const key = cr.variant === 1 ? (flap ? 'bfly1b' : 'bfly1a') : (flap ? 'bfly2b' : 'bfly2a');
-      const img = S[key];
-      g.drawImage(img, Math.round(cr.x - img.width / 2), Math.round(cr.y - img.height / 2));
-    }
-  }
+  drawCritters(critters, cx, cy);
   for (const r of rings) { pixelRing(r.x, r.y, r.r, P[0]); pixelRing(r.x, r.y, r.r - 2, ACC); }
   for (const p of parts) { g.fillStyle = (p.pal || P)[p.col]; g.fillRect(Math.round(p.x), Math.round(p.y), 1, p.rain ? 3 : 1); }
   for (const x of texts) { if (x.s[0] === '+' && x.s[1] === '$') { const o = P[3]; P[3] = ACC; txtO(x.s, x.x, x.y, 3, 1, 'c', 0); P[3] = o; } else txtO(x.s, x.x, x.y, 3, 1, 'c', 0); }
@@ -2554,7 +2643,7 @@ function hintText() {
   if (!flags.board) return 'Restaurants post orders on the notice board';
   if (flags.crowSeen && !flags.shooed) return 'Crows avoid you. Tap Shoo!';
   if (flags.harvested && !flags.sold && !flags.delivered) return 'Sell at the bin or deliver orders at the box';
-  if (day === 1 && clockMin() > 1020) return 'Sleep in your shack to end the day';
+  if (day === 1 && clockMin() > 1020) return onDefMap ? 'Sleep at the cottage to end the day' : 'Walk through the HOME gate to reach your cottage';
   if (built.shed && !flags.cooked) return 'Cook crops at the shed for far more money';
   if (seasonOf(day) === 3 && !built.green) return 'Nothing grows in winter. Build, or buy a greenhouse';
   if (rep >= 1 && !flags.mach && !WORK_MACH_KEYS.some(k => inv[k] > 0)) return 'The crate now has a machine shop for things that work for you';
@@ -2840,7 +2929,7 @@ function resize() {
   const pr = pad.getBoundingClientRect();
   ctrlH = Math.max(0, Math.ceil((h - pr.top) / scale) - 8);
   satTop = Math.ceil(sat.getBoundingClientRect().height / scale);
-  if (state === 'day') snapCam();
+  if (state === 'day') { if (onDefMap) defSnapCam(); else snapCam(); }
 }
 addEventListener('resize', resize);
 resize();
